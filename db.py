@@ -1,0 +1,190 @@
+import sqlite3
+from config import config
+from typing import List, Dict, Union, Optional
+import os
+
+class Database:
+    def __init__(self):
+        self.conn = sqlite3.connect(config.DB_NAME)
+        self.cursor = self.conn.cursor()
+        self._init_db()
+    
+    def _init_db(self):
+        # Пользователи
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            username TEXT,
+            balance REAL DEFAULT 0
+        )
+        """)
+        
+        # Предметы
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE
+        )
+        """)
+        
+        # Шпаргалки
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cheatsheets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER,
+            semester INTEGER,
+            type TEXT,
+            file_id TEXT,
+            file_type TEXT,
+            price REAL,
+            author_id INTEGER,
+            is_approved INTEGER DEFAULT 0,
+            FOREIGN KEY (subject_id) REFERENCES subjects(id),
+            FOREIGN KEY (author_id) REFERENCES users(id)
+        )
+        """)
+        
+        # Покупки
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS purchases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            cheatsheet_id INTEGER,
+            amount REAL,
+            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (cheatsheet_id) REFERENCES cheatsheets(id)
+        )
+        """)
+        
+        self.conn.commit()
+    
+    # Пользователи
+    def add_user(self, user_id: int, username: str):
+        try:
+            self.cursor.execute("INSERT INTO users (id, username) VALUES (?, ?)", (user_id, username))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+    
+    def get_user_balance(self, user_id: int) -> float:
+        self.cursor.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+        result = self.cursor.fetchone()
+        return result[0] if result else 0.0
+    
+    def update_user_balance(self, user_id: int, amount: float):
+        self.cursor.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, user_id))
+        self.conn.commit()
+    
+    # Предметы
+    def add_subject(self, name: str):
+        try:
+            self.cursor.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+    
+    def get_subjects(self) -> List[str]:
+        self.cursor.execute("SELECT name FROM subjects")
+        return [row[0] for row in self.cursor.fetchall()]
+    
+    # Шпаргалки
+    def add_cheatsheet(self, subject_id: int, semester: int, type_: str, file_id: str, file_type: str, price: float, author_id: int) -> int:
+        self.cursor.execute(
+            "INSERT INTO cheatsheets (subject_id, semester, type, file_id, file_type, price, author_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (subject_id, semester, type_, file_id, file_type, price, author_id)
+        )
+        self.conn.commit()
+        return self.cursor.lastrowid
+    
+    def get_cheatsheet(self, cheatsheet_id: int) -> Optional[Dict]:
+        self.cursor.execute("""
+        SELECT c.id, s.name, c.semester, c.type, c.file_id, c.file_type, c.price, u.username 
+        FROM cheatsheets c
+        JOIN subjects s ON c.subject_id = s.id
+        JOIN users u ON c.author_id = u.id
+        WHERE c.id = ? AND c.is_approved = 1
+        """, (cheatsheet_id,))
+        result = self.cursor.fetchone()
+        if not result:
+            return None
+        
+        return {
+            "id": result[0],
+            "subject": result[1],
+            "semester": result[2],
+            "type": result[3],
+            "file_id": result[4],
+            "file_type": result[5],
+            "price": result[6],
+            "author": result[7]
+        }
+    
+    def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
+        query = """
+        SELECT c.id, s.name, c.semester, c.type, c.price, u.username 
+        FROM cheatsheets c
+        JOIN subjects s ON c.subject_id = s.id
+        JOIN users u ON c.author_id = u.id
+        WHERE c.is_approved = 1
+        """
+        params = []
+        
+        if subject:
+            query += " AND s.name = ?"
+            params.append(subject)
+        if semester:
+            query += " AND c.semester = ?"
+            params.append(semester)
+        if type_:
+            query += " AND c.type = ?"
+            params.append(type_)
+        
+        self.cursor.execute(query, params)
+        return [{
+            "id": row[0],
+            "subject": row[1],
+            "semester": row[2],
+            "type": row[3],
+            "price": row[4],
+            "author": row[5]
+        } for row in self.cursor.fetchall()]
+    
+    def get_user_cheatsheets(self, user_id: int) -> List[Dict]:
+        self.cursor.execute("""
+        SELECT c.id, s.name, c.semester, c.type, c.price, c.is_approved 
+        FROM cheatsheets c
+        JOIN subjects s ON c.subject_id = s.id
+        WHERE c.author_id = ?
+        """, (user_id,))
+        return [{
+            "id": row[0],
+            "subject": row[1],
+            "semester": row[2],
+            "type": row[3],
+            "price": row[4],
+            "is_approved": bool(row[5])
+        } for row in self.cursor.fetchall()]
+    
+    def approve_cheatsheet(self, cheatsheet_id: int):
+        self.cursor.execute("UPDATE cheatsheets SET is_approved = 1 WHERE id = ?", (cheatsheet_id,))
+        self.conn.commit()
+    
+    def reject_cheatsheet(self, cheatsheet_id: int):
+        self.cursor.execute("DELETE FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
+        self.conn.commit()
+    
+    # Покупки
+    def add_purchase(self, user_id: int, cheatsheet_id: int, amount: float):
+        self.cursor.execute(
+            "INSERT INTO purchases (user_id, cheatsheet_id, amount) VALUES (?, ?, ?)",
+            (user_id, cheatsheet_id, amount)
+        )
+        self.conn.commit()
+    
+    def close(self):
+        self.conn.close()
+
+db = Database()
