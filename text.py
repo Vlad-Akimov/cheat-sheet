@@ -7,6 +7,7 @@ class Texts:
     ADD_CHEATSHEET = "📤 Добавить шпаргалку"
     MY_CHEATSHEETS = "📚 Мои шпаргалки"
     BALANCE = "💰 Баланс"
+    DEPOSIT = "💳 Пополнить баланс"
     
     # Добавление шпаргалки
     SELECT_SUBJECT = "Выберите предмет:"

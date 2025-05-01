@@ -7,10 +7,11 @@ from config import config
 from text import texts
 from kb import *
 from db import db
-from utils import is_valid_file_type, get_file_type
+from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
 
 # Создаем роутер
 router = Router()
+
 
 # Определение состояний
 class CheatsheetStates(StatesGroup):
@@ -20,20 +21,24 @@ class CheatsheetStates(StatesGroup):
     waiting_for_file = State()
     waiting_for_price = State()
 
+
 async def cmd_start(message: types.Message):
-    await message.answer(texts.START, reply_markup=main_menu())
+    await delete_previous_messages(message, 1000)
+    await reply_with_menu(message, texts.START, delete_prev=False)
 
 async def cmd_help(message: types.Message):
-    await message.answer(texts.HELP)
+    await reply_with_menu(message, texts.HELP)
+
 
 async def search_cheatsheets(message: types.Message, state: FSMContext):
+    await delete_previous_messages(message)
     subjects = db.get_subjects()
     if not subjects:
         await message.answer("Пока нет доступных предметов.")
         return
-    
     await message.answer(texts.SELECT_SUBJECT, reply_markup=subjects_kb(subjects))
     await state.set_state(CheatsheetStates.waiting_for_subject)
+
 
 async def process_subject(callback: types.CallbackQuery, state: FSMContext):
     subject = callback.data.split("_")[1]
@@ -41,11 +46,13 @@ async def process_subject(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(texts.SELECT_SEMESTER, reply_markup=semesters_kb())
     await state.set_state(CheatsheetStates.waiting_for_semester)
 
+
 async def process_semester(callback: types.CallbackQuery, state: FSMContext):
     semester = int(callback.data.split("_")[1])
     await state.update_data(semester=semester)
     await callback.message.edit_text(texts.SELECT_TYPE, reply_markup=types_kb())
     await state.set_state(CheatsheetStates.waiting_for_type)
+
 
 async def process_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
@@ -54,7 +61,7 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     cheatsheets = db.get_cheatsheets(subject=data["subject"], semester=data["semester"], type_=type_)
     
     if not cheatsheets:
-        await callback.message.edit_text(texts.NO_CHEATSHEETS)
+        await reply_with_menu(callback, texts.NO_CHEATSHEETS, delete_current=True)
         await state.clear()
         return
     
@@ -76,14 +83,16 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     
     await state.clear()
 
+
 async def add_cheatsheet(message: types.Message, state: FSMContext):
+    await delete_previous_messages(message)
     subjects = db.get_subjects()
     if not subjects:
         await message.answer("Пока нет доступных предметов.")
         return
-    
     await message.answer(texts.SELECT_SUBJECT, reply_markup=subjects_kb(subjects))
     await state.set_state(CheatsheetStates.waiting_for_subject)
+
 
 async def process_add_subject(callback: types.CallbackQuery, state: FSMContext):
     subject = callback.data.split("_")[1]
@@ -91,17 +100,20 @@ async def process_add_subject(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(texts.SELECT_SEMESTER, reply_markup=semesters_kb())
     await state.set_state(CheatsheetStates.waiting_for_semester)
 
+
 async def process_add_semester(callback: types.CallbackQuery, state: FSMContext):
     semester = int(callback.data.split("_")[1])
     await state.update_data(semester=semester)
     await callback.message.edit_text(texts.SELECT_TYPE, reply_markup=types_kb())
     await state.set_state(CheatsheetStates.waiting_for_type)
 
+
 async def process_add_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
     await state.update_data(type=type_)
     await callback.message.edit_text(texts.SEND_FILE, reply_markup=cancel_kb())
     await state.set_state(CheatsheetStates.waiting_for_file)
+
 
 async def process_file(message: types.Message, state: FSMContext):
     if not is_valid_file_type(message):
@@ -121,6 +133,7 @@ async def process_file(message: types.Message, state: FSMContext):
     await state.update_data(file_id=file_id, file_type=file_type)
     await message.answer(texts.SET_PRICE, reply_markup=cancel_kb())
     await state.set_state(CheatsheetStates.waiting_for_price)
+
 
 async def process_price(message: types.Message, state: FSMContext):
     try:
@@ -183,15 +196,16 @@ async def process_price(message: types.Message, state: FSMContext):
     await message.answer(texts.CHEATSHEET_SENT_FOR_REVIEW, reply_markup=main_menu())
     await state.clear()
 
+
 async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Действие отменено.")
+    await reply_with_menu(callback, "Действие отменено.")
     await state.clear()
-    await callback.message.answer("Главное меню", reply_markup=main_menu())
+
 
 async def show_user_cheatsheets(message: types.Message):
     cheatsheets = db.get_user_cheatsheets(message.from_user.id)
     if not cheatsheets:
-        await message.answer("У вас пока нет шпаргалок.")
+        await reply_with_menu(message, "У вас пока нет шпаргалок.")
         return
     
     text = "📚 Ваши шпаргалки:\n\n"
@@ -199,11 +213,13 @@ async def show_user_cheatsheets(message: types.Message):
         status = "✅ Одобрена" if cs["is_approved"] else "⏳ На модерации"
         text += f"{cs['subject']}, {cs['semester']} семестр, {cs['type']} - {cs['price']} руб. ({status})\n"
     
-    await message.answer(text)
+    await reply_with_menu(message, text)
+
 
 async def show_balance(message: types.Message):
     balance = db.get_user_balance(message.from_user.id)
-    await message.answer(f"💰 Ваш баланс: {balance} руб.")
+    await reply_with_menu(message, f"💰 Ваш баланс: {balance} руб.")
+
 
 async def buy_cheatsheet(callback: types.CallbackQuery):
     cheatsheet_id = int(callback.data.split("_")[1])
@@ -211,7 +227,7 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
     
     cheatsheet = db.get_cheatsheet(cheatsheet_id)
     if not cheatsheet:
-        await callback.answer("Шпаргалка не найдена.")
+        await reply_with_menu(callback, "Шпаргалка не найдена.", delete_current=True)
         return
     
     user_balance = db.get_user_balance(user_id)
@@ -238,21 +254,36 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
     db.add_purchase(user_id, cheatsheet_id, cheatsheet["price"])
     
     if cheatsheet["file_type"] == "photo":
-        await callback.message.answer_photo(cheatsheet["file_id"], caption=texts.PURCHASE_SUCCESS)
-    elif cheatsheet["file_type"] == "document":
-        await callback.message.answer_document(cheatsheet["file_id"], caption=texts.PURCHASE_SUCCESS)
-    else:
-        await callback.message.answer(f"{texts.PURCHASE_SUCCESS}\n\n{cheatsheet['file_id']}")
-    
-    await callback.bot.send_message(
-        chat_id=cheatsheet["author_id"],
-        text=texts.SOLD_NOTIFICATION.format(
-            user=f"@{callback.from_user.username}" if callback.from_user.username else f"ID: {callback.from_user.id}",
-            amount=author_amount
+        await callback.message.answer_photo(
+            cheatsheet["file_id"],
+            caption=texts.PURCHASE_SUCCESS,
+            reply_markup=main_menu()
         )
-    )
+    elif cheatsheet["file_type"] == "document":
+        await callback.message.answer_document(
+            cheatsheet["file_id"],
+            caption=texts.PURCHASE_SUCCESS,
+            reply_markup=main_menu()
+        )
+    else:
+        await callback.message.answer(
+            f"{texts.PURCHASE_SUCCESS}\n\n{cheatsheet['file_id']}",
+            reply_markup=main_menu()
+        )
     
+    await callback.message.delete()  # Удаляем сообщение с кнопкой покупки
     await callback.answer()
+
+
+async def deposit_balance(message: types.Message):
+    await reply_with_menu(
+        message,
+        "Для пополнения баланса:\n\n"
+        "1. Переведите средства на наш счет\n"
+        "2. Отправьте скриншот перевода администратору @Vld251\n"
+        "3. После проверки ваш баланс будет пополнен"
+    )
+
 
 def register_handlers(dp):
     # Команды
@@ -264,6 +295,7 @@ def register_handlers(dp):
     router.message.register(add_cheatsheet, F.text == texts.ADD_CHEATSHEET)
     router.message.register(show_user_cheatsheets, F.text == texts.MY_CHEATSHEETS)
     router.message.register(show_balance, F.text == texts.BALANCE)
+    router.message.register(deposit_balance, F.text == texts.DEPOSIT)
     
     # Поиск шпаргалок
     router.callback_query.register(process_subject, F.data.startswith("subject_"), CheatsheetStates.waiting_for_subject)
@@ -283,6 +315,9 @@ def register_handlers(dp):
     # Покупка
     router.callback_query.register(buy_cheatsheet, F.data.startswith("buy_"))
     router.callback_query.register(buy_cheatsheet, F.data.startswith("free_"))
+    
+    # Добавляем обработчик пополнения баланса
+    router.message.register(deposit_balance, F.text == texts.DEPOSIT)
     
     # Включаем роутер в диспетчер
     dp.include_router(router)

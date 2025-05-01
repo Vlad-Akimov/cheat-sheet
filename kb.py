@@ -10,7 +10,7 @@ def main_menu():
         keyboard=[
             [KeyboardButton(text=texts.SEARCH_CHEATSHEET)],
             [KeyboardButton(text=texts.ADD_CHEATSHEET), KeyboardButton(text=texts.MY_CHEATSHEETS)],
-            [KeyboardButton(text=texts.BALANCE)]
+            [KeyboardButton(text=texts.BALANCE), KeyboardButton(text=texts.DEPOSIT)]
         ],
         resize_keyboard=True
     )
