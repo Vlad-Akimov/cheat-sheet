@@ -142,7 +142,7 @@ class Database:
     
     def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
         query = """
-        SELECT c.id, s.name, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, u.username 
+        SELECT c.id, s.name, c.semester, c.type, c.name, c.price, u.username 
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         JOIN users u ON c.author_id = u.id
@@ -167,15 +167,13 @@ class Database:
             "semester": row[2],
             "type": row[3],
             "name": row[4],
-            "file_id": row[5],
-            "file_type": row[6],
-            "price": row[7],
-            "author": row[8]
+            "price": row[5],
+            "author": row[6]
         } for row in self.cursor.fetchall()]
     
     def get_user_cheatsheets(self, user_id: int) -> List[Dict]:
         self.cursor.execute("""
-        SELECT c.id, s.name, c.semester, c.type, c.name, c.price, c.is_approved, c.file_id, c.file_type 
+        SELECT c.id, s.name, c.semester, c.type, c.name, c.price, c.is_approved 
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         WHERE c.author_id = ?
@@ -187,9 +185,7 @@ class Database:
             "type": row[3],
             "name": row[4],
             "price": row[5],
-            "is_approved": bool(row[6]),
-            "file_id": row[7],
-            "file_type": row[8]
+            "is_approved": bool(row[6])
         } for row in self.cursor.fetchall()]
     
     def approve_cheatsheet(self, cheatsheet_id: int):

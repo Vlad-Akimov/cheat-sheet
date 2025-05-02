@@ -54,7 +54,6 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     
     for cheatsheet in cheatsheets:
         text = texts.CHEATSHEET_INFO.format(
-            name=cheatsheet["name"],
             subject=cheatsheet["subject"],
             semester=cheatsheet["semester"],
             type=cheatsheet["type"],
@@ -137,14 +136,6 @@ async def process_price(message: types.Message, state: FSMContext):
     
     data = await state.get_data()
     
-    # Проверяем наличие всех необходимых данных
-    required_fields = ['subject', 'semester', 'type', 'name', 'file_id', 'file_type']
-    for field in required_fields:
-        if field not in data:
-            await message.answer("Произошла ошибка: отсутствуют необходимые данные. Пожалуйста, начните процесс заново.")
-            await state.clear()
-            return
-    
     subject_id = db.cursor.execute("SELECT id FROM subjects WHERE name = ?", (data["subject"],)).fetchone()
     if not subject_id:
         db.add_subject(data["subject"])
@@ -165,7 +156,6 @@ async def process_price(message: types.Message, state: FSMContext):
     
     user = message.from_user
     admin_text = texts.NEW_CHEATSHEET_FOR_REVIEW.format(
-        name=data["name"],
         subject=data["subject"],
         semester=data["semester"],
         type=data["type"],

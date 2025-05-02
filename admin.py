@@ -35,7 +35,36 @@ async def view_all_cheatsheets(message: types.Message):
     
     await message.answer(text)
 
+async def check_cheatsheets(message: types.Message):
+    if message.from_user.id != config.ADMIN_ID:
+        return
+    
+    # Проверяем все шпаргалки
+    cheatsheets = db.cursor.execute("""
+    SELECT 
+        c.id, 
+        s.name as subject, 
+        c.semester, 
+        c.type, 
+        c.name, 
+        c.is_approved,
+        COUNT(*) as count
+    FROM cheatsheets c
+    JOIN subjects s ON c.subject_id = s.id
+    GROUP BY s.name, c.semester, c.type
+    """).fetchall()
+    
+    text = "Статистика шпаргалок:\n\n"
+    for cs in cheatsheets:
+        status = "✅ Одобрена" if cs[5] else "❌ На модерации"
+        text += f"{cs[1]} | {cs[2]} семестр | {cs[3]} | {cs[4]} | {status}\n"
+    
+    text += f"\nВсего шпаргалок: {sum(cs[6] for cs in cheatsheets)}"
+    await message.answer(text)
+
+
 def register_admin_handlers(router: Router):
     router.callback_query.register(approve_cheatsheet, F.data.startswith("approve_"))
     router.callback_query.register(reject_cheatsheet, F.data.startswith("reject_"))
     router.message.register(view_all_cheatsheets, Command("all_cheatsheets"))
+    router.message.register(check_cheatsheets, Command("check_cheatsheets"))
