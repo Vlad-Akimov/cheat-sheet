@@ -8,6 +8,7 @@ class Database:
         self.conn = sqlite3.connect(config.DB_NAME)
         self.cursor = self.conn.cursor()
         self._init_db()
+        self._migrate_db()  # Добавляем миграции
     
     def _init_db(self):
         # Пользователи
@@ -34,6 +35,7 @@ class Database:
             subject_id INTEGER,
             semester INTEGER,
             type TEXT,
+            name TEXT,
             file_id TEXT,
             file_type TEXT,
             price REAL,
@@ -58,6 +60,21 @@ class Database:
         """)
         
         self.conn.commit()
+    
+    def _migrate_db(self):
+        """Добавляем отсутствующие колонки в существующие таблицы"""
+        try:
+            # Проверяем наличие колонки name в таблице cheatsheets
+            self.cursor.execute("PRAGMA table_info(cheatsheets)")
+            columns = [column[1] for column in self.cursor.fetchall()]
+            
+            if 'name' not in columns:
+                self.cursor.execute("ALTER TABLE cheatsheets ADD COLUMN name TEXT")
+                self.conn.commit()
+                print("Добавлена колонка 'name' в таблицу cheatsheets")
+                
+        except Exception as e:
+            print(f"Ошибка при миграции базы данных: {e}")
     
     # Пользователи
     def add_user(self, user_id: int, username: str):
@@ -91,17 +108,17 @@ class Database:
         return [row[0] for row in self.cursor.fetchall()]
     
     # Шпаргалки
-    def add_cheatsheet(self, subject_id: int, semester: int, type_: str, file_id: str, file_type: str, price: float, author_id: int) -> int:
+    def add_cheatsheet(self, subject_id: int, semester: int, type_: str, name: str, file_id: str, file_type: str, price: float, author_id: int) -> int:
         self.cursor.execute(
-            "INSERT INTO cheatsheets (subject_id, semester, type, file_id, file_type, price, author_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (subject_id, semester, type_, file_id, file_type, price, author_id)
+            "INSERT INTO cheatsheets (subject_id, semester, type, name, file_id, file_type, price, author_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (subject_id, semester, type_, name, file_id, file_type, price, author_id)
         )
         self.conn.commit()
         return self.cursor.lastrowid
     
     def get_cheatsheet(self, cheatsheet_id: int) -> Optional[Dict]:
         self.cursor.execute("""
-        SELECT c.id, s.name, c.semester, c.type, c.file_id, c.file_type, c.price, u.username 
+        SELECT c.id, s.name, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, u.username 
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         JOIN users u ON c.author_id = u.id
@@ -116,15 +133,16 @@ class Database:
             "subject": result[1],
             "semester": result[2],
             "type": result[3],
-            "file_id": result[4],
-            "file_type": result[5],
-            "price": result[6],
-            "author": result[7]
+            "name": result[4],
+            "file_id": result[5],
+            "file_type": result[6],
+            "price": result[7],
+            "author": result[8]
         }
     
     def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
         query = """
-        SELECT c.id, s.name, c.semester, c.type, c.price, u.username 
+        SELECT c.id, s.name, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, u.username 
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         JOIN users u ON c.author_id = u.id
@@ -148,13 +166,16 @@ class Database:
             "subject": row[1],
             "semester": row[2],
             "type": row[3],
-            "price": row[4],
-            "author": row[5]
+            "name": row[4],
+            "file_id": row[5],
+            "file_type": row[6],
+            "price": row[7],
+            "author": row[8]
         } for row in self.cursor.fetchall()]
     
     def get_user_cheatsheets(self, user_id: int) -> List[Dict]:
         self.cursor.execute("""
-        SELECT c.id, s.name, c.semester, c.type, c.price, c.is_approved 
+        SELECT c.id, s.name, c.semester, c.type, c.name, c.price, c.is_approved, c.file_id, c.file_type 
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         WHERE c.author_id = ?
@@ -164,8 +185,11 @@ class Database:
             "subject": row[1],
             "semester": row[2],
             "type": row[3],
-            "price": row[4],
-            "is_approved": bool(row[5])
+            "name": row[4],
+            "price": row[5],
+            "is_approved": bool(row[6]),
+            "file_id": row[7],
+            "file_type": row[8]
         } for row in self.cursor.fetchall()]
     
     def approve_cheatsheet(self, cheatsheet_id: int):

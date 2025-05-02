@@ -2,10 +2,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Filter
 from aiogram import types
 
-class CheatsheetStates(StatesGroup):
+class SearchCheatsheetStates(StatesGroup):
     waiting_for_subject = State()
     waiting_for_semester = State()
     waiting_for_type = State()
+
+class AddCheatsheetStates(StatesGroup):
+    waiting_for_subject = State()
+    waiting_for_semester = State()
+    waiting_for_type = State()
+    waiting_for_name = State()
     waiting_for_file = State()
     waiting_for_price = State()
 
