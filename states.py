@@ -19,6 +19,10 @@ class AddBalanceStates(StatesGroup):
     waiting_for_user_id = State()
     waiting_for_amount = State()
 
+class BalanceRequestStates(StatesGroup):
+    waiting_for_amount = State()
+    waiting_for_proof = State()
+
 class IsAdmin(Filter):
     async def __call__(self, message: types.Message) -> bool:
         return message.from_user.id == message.bot.get('config').ADMIN_ID

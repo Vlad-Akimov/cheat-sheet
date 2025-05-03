@@ -64,6 +64,24 @@ class Database:
         )
         """)
         
+        # Таблица запросов на пополнение баланса
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS balance_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            proof_text TEXT,
+            file_id TEXT,
+            file_type TEXT,
+            status TEXT DEFAULT 'pending',
+            admin_id INTEGER,
+            processed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (admin_id) REFERENCES users(id)
+        )
+        """)
+            
         self.conn.commit()
     
     def close(self):
@@ -110,19 +128,27 @@ class Database:
         return result[0] if result else 0.0
     
     def update_user_balance(self, user_id: int, amount: float) -> bool:
-        """Обновляет баланс пользователя в рамках транзакции"""
+        """Обновляет баланс пользователя с проверками"""
         try:
+            # Проверяем существование пользователя
+            self.cursor.execute("SELECT 1 FROM users WHERE id = ?", (user_id,))
+            if not self.cursor.fetchone():
+                self.add_user(user_id, f"user_{user_id}")
+
+            # Обновляем баланс
             self.cursor.execute(
                 "UPDATE users SET balance = balance + ? WHERE id = ?",
                 (amount, user_id)
             )
+            self.conn.commit()
+            
             # Проверяем, что баланс изменился
-            self.cursor.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
-            new_balance = self.cursor.fetchone()[0]
+            new_balance = self.get_user_balance(user_id)
             print(f"Баланс пользователя {user_id} изменен на {amount}. Новый баланс: {new_balance}")
             return True
         except Exception as e:
             print(f"Ошибка при обновлении баланса: {e}")
+            self.conn.rollback()
             return False
     
     # Предметы
@@ -258,5 +284,66 @@ class Database:
             print(f"Ошибка при добавлении покупки: {e}")
             self.conn.rollback()
             return False
+    
+    
+    def add_balance_request(self, user_id: int, amount: float, proof_text: str = None, 
+                          file_id: str = None, file_type: str = None) -> int:
+        """Добавляет запрос на пополнение с проверкой"""
+        try:
+            self.cursor.execute(
+                """INSERT INTO balance_requests 
+                (user_id, amount, proof_text, file_id, file_type) 
+                VALUES (?, ?, ?, ?, ?)""",
+                (user_id, amount, proof_text, file_id, file_type)
+            )
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except Exception as e:
+            print(f"Ошибка добавления запроса: {e}")
+            return None
+
+    def get_pending_requests(self) -> List[Dict]:
+        """Получает все ожидающие запросы"""
+        self.cursor.execute("""
+        SELECT br.*, u.username 
+        FROM balance_requests br
+        JOIN users u ON br.user_id = u.id
+        WHERE br.status = 'pending'
+        ORDER BY br.created_at
+        """)
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def update_request_status(self, request_id: int, status: str, admin_id: int) -> bool:
+        """Обновляет статус запроса на пополнение баланса"""
+        try:
+            self.cursor.execute(
+                """UPDATE balance_requests 
+                SET status = ?, admin_id = ?, processed_at = CURRENT_TIMESTAMP 
+                WHERE id = ?""",
+                (status, admin_id, request_id)
+            )
+            self.conn.commit()
+            return self.cursor.rowcount > 0
+        except Exception as e:
+            print(f"Ошибка обновления статуса запроса: {e}")
+            self.conn.rollback()
+            return False
+    
+    def _migrate_db(self):
+        """Применяет необходимые миграции к базе данных"""
+        try:
+            # Проверяем существование колонок в balance_requests
+            self.cursor.execute("PRAGMA table_info(balance_requests)")
+            columns = [column[1] for column in self.cursor.fetchall()]
+            
+            # Добавляем отсутствующие колонки
+            if 'file_id' not in columns:
+                self.cursor.execute("ALTER TABLE balance_requests ADD COLUMN file_id TEXT")
+            if 'file_type' not in columns:
+                self.cursor.execute("ALTER TABLE balance_requests ADD COLUMN file_type TEXT")
+                
+            self.conn.commit()
+        except Exception as e:
+            print(f"Ошибка миграции базы данных: {e}")
 
 db = Database()

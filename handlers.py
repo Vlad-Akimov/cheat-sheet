@@ -1,16 +1,16 @@
 import logging
-from aiogram import Router, types, F
+from aiogram import Bot, Router, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardRemove, KeyboardButton
+from aiogram.types import ReplyKeyboardRemove, KeyboardButton, InputFile, InlineKeyboardButton
 
 from config import config
 from text import texts
 from kb import *
 from db import db
 from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
-from states import SearchCheatsheetStates, AddCheatsheetStates, AddBalanceStates
+from states import SearchCheatsheetStates, AddCheatsheetStates, AddBalanceStates, BalanceRequestStates
 
 # Создаем роутер
 router = Router()
@@ -275,10 +275,11 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
         # Проверка баланса
         user_balance = db.get_user_balance(user_id)
         if user_balance < cheatsheet["price"]:
-            await callback.answer(
-                f"Недостаточно средств. Нужно: {cheatsheet['price']} руб. Ваш баланс: {user_balance} руб.",
-                show_alert=True
-            )
+            await callback.answer(texts.NOT_ENOUGH_MONEY, show_alert=True)
+            await reply_with_menu(callback, 
+                                f"Недостаточно средств. Ваш баланс: {user_balance} руб.\n"
+                                f"Требуется: {cheatsheet['price']} руб.\n\n"
+                                "Пополните баланс и попробуйте снова.")
             return
 
         # Начинаем транзакцию
@@ -353,14 +354,121 @@ def admin_balance_kb():
         resize_keyboard=True
     )
 
-# Обработчик запроса на пополнение от пользователя
-async def request_balance(message: types.Message):
+# Пользователь запрашивает пополнение
+async def request_balance(message: types.Message, state: FSMContext):
     await message.answer(
-        "Для пополнения баланса:\n"
-        "1. Переведите средства\n"
-        "2. Отправьте скриншот перевода и сумму администратору @Vld251",
-        reply_markup=main_menu()
+        "Отправьте сумму пополнения цифрами (например: 500):",
+        reply_markup=ReplyKeyboardRemove()
     )
+    await state.set_state(BalanceRequestStates.waiting_for_amount)
+
+# Пользователь вводит сумму
+async def process_balance_amount(message: types.Message, state: FSMContext):
+    try:
+        amount = float(message.text)
+        if amount <= 0:
+            await message.answer("Сумма должна быть больше 0")
+            return
+            
+        await state.update_data(amount=amount)
+        await message.answer(
+            "Теперь отправьте скриншот подтверждения платежа (фото или документ PDF/JPG/PNG),\n"
+            "или текстовое описание платежа (номер транзакции и т.д.):",
+            reply_markup=cancel_kb()
+        )
+        await state.set_state(BalanceRequestStates.waiting_for_proof)
+    except ValueError:
+        await message.answer("Пожалуйста, введите сумму цифрами (например: 500)")
+
+async def notify_admin_about_request(bot: Bot, request_id: int, user: types.User, amount: float, 
+                                   file_id: str = None, file_type: str = None, proof_text: str = None):
+    text = (
+        f"🆕 Запрос на пополнение #{request_id}\n"
+        f"👤 Пользователь: @{user.username} (ID: {user.id})\n"
+        f"💰 Сумма: {amount} руб.\n"
+    )
+    
+    if proof_text:
+        text += f"📝 Комментарий: {proof_text}\n"
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"balance_approve_{request_id}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"balance_reject_{request_id}")]
+    ])
+    
+    try:
+        if file_id:
+            if file_type == "photo":
+                await bot.send_photo(
+                    chat_id=config.ADMIN_ID,
+                    photo=file_id,
+                    caption=text,
+                    reply_markup=markup
+                )
+            else:
+                await bot.send_document(
+                    chat_id=config.ADMIN_ID,
+                    document=file_id,
+                    caption=text,
+                    reply_markup=markup
+                )
+        else:
+            await bot.send_message(
+                chat_id=config.ADMIN_ID,
+                text=text,
+                reply_markup=markup
+            )
+    except Exception as e:
+        print(f"Ошибка уведомления админа: {e}")
+
+# Пользователь отправляет подтверждение
+async def process_balance_proof(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    
+    # Проверяем сумму
+    if 'amount' not in data or data['amount'] <= 0:
+        await message.answer("Ошибка: неверная сумма", reply_markup=main_menu())
+        await state.clear()
+        return
+
+    # Сохраняем файл или текст
+    file_id = None
+    file_type = None
+    proof_text = None
+
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        file_type = "photo"
+    elif message.document:
+        file_id = message.document.file_id
+        file_type = "document"
+    elif message.text:
+        proof_text = message.text
+    else:
+        await message.answer("Неверный формат подтверждения", reply_markup=main_menu())
+        await state.clear()
+        return
+
+    # Сохраняем запрос
+    request_id = db.add_balance_request(
+        user_id=message.from_user.id,
+        amount=data['amount'],
+        proof_text=proof_text,
+        file_id=file_id,
+        file_type=file_type
+    )
+
+    if not request_id:
+        await message.answer("Ошибка при создании запроса", reply_markup=main_menu())
+        await state.clear()
+        return
+
+    # Отправляем уведомление админу
+    await notify_admin_about_request(message.bot, request_id, message.from_user, data['amount'], file_id, file_type, proof_text)
+    
+    await message.answer("✅ Ваш запрос отправлен на рассмотрение", reply_markup=main_menu())
+    await state.clear()
+
 
 # Админ: начало процесса пополнения баланса
 async def admin_add_balance(message: types.Message, state: FSMContext):
@@ -390,6 +498,100 @@ async def process_user_id(message: types.Message, state: FSMContext):
         await state.set_state(AddBalanceStates.waiting_for_amount)
     except ValueError:
         await message.answer("Неверный формат ID. Введите число:")
+
+
+# Админ обрабатывает запрос
+async def handle_balance_request(callback: types.CallbackQuery):
+    try:
+        # Разбираем callback data
+        parts = callback.data.split('_')
+        if len(parts) != 3:
+            await callback.answer("Неверный формат запроса", show_alert=True)
+            return
+
+        action, request_id = parts[1], parts[2]
+        
+        try:
+            request_id = int(request_id)
+        except ValueError:
+            await callback.answer("Неверный ID запроса", show_alert=True)
+            return
+
+        # Получаем полные данные запроса
+        db.cursor.execute("""
+        SELECT user_id, amount, file_id, file_type, proof_text 
+        FROM balance_requests 
+        WHERE id = ? AND status = 'pending'
+        """, (request_id,))
+        request = db.cursor.fetchone()
+
+        if not request:
+            await callback.answer("Запрос не найден или уже обработан", show_alert=True)
+            return
+
+        user_id, amount, file_id, file_type, proof_text = request
+
+        # Обновляем статус запроса
+        success = db.update_request_status(
+            request_id=request_id,
+            status="approved" if action == "approve" else "rejected",
+            admin_id=callback.from_user.id
+        )
+
+        if not success:
+            await callback.answer("Ошибка обновления статуса", show_alert=True)
+            return
+
+        # Если одобрено - пополняем баланс
+        if action == "approve":
+            if not db.update_user_balance(user_id, amount):
+                await callback.answer("Ошибка пополнения баланса", show_alert=True)
+                return
+
+        # Формируем сообщение для пользователя
+        if action == "approve":
+            new_balance = db.get_user_balance(user_id)
+            user_message = (
+                f"✅ Ваш запрос на пополнение {amount} руб. одобрен.\n"
+                f"Текущий баланс: {new_balance} руб."
+            )
+        else:
+            user_message = f"❌ Ваш запрос на пополнение {amount} руб. отклонен."
+
+        # Отправляем уведомление пользователю
+        try:
+            await callback.bot.send_message(user_id, user_message)
+        except Exception as e:
+            print(f"Ошибка уведомления пользователя: {e}")
+
+        # Обновляем сообщение админа
+        try:
+            if file_id:  # Если был файл
+                if file_type == "photo":
+                    await callback.message.edit_caption(
+                        caption=f"Запрос #{request_id} {'одобрен' if action == 'approve' else 'отклонен'}",
+                        reply_markup=None
+                    )
+                else:  # document
+                    await callback.message.edit_caption(
+                        caption=f"Запрос #{request_id} {'одобрен' if action == 'approve' else 'отклонен'}",
+                        reply_markup=None
+                    )
+            else:  # Если был только текст
+                await callback.message.edit_text(
+                    f"Запрос #{request_id} {'одобрен' if action == 'approve' else 'отклонен'}",
+                    reply_markup=None
+                )
+        except Exception as e:
+            print(f"Ошибка редактирования сообщения: {e}")
+            await callback.answer(f"Запрос обработан, но не удалось обновить сообщение: {e}")
+
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка обработки запроса баланса: {e}")
+        await callback.answer("Произошла ошибка при обработке", show_alert=True)
+
 
 # Получение суммы и пополнение баланса
 async def process_amount(message: types.Message, state: FSMContext):
@@ -475,7 +677,13 @@ def register_handlers(dp):
     router.message.register(add_cheatsheet, F.text == texts.ADD_CHEATSHEET)
     router.message.register(show_user_cheatsheets, F.text == texts.MY_CHEATSHEETS)
     router.message.register(show_balance, F.text == texts.BALANCE)
-    router.message.register(deposit_balance, F.text == texts.DEPOSIT)
+    
+    # Запросы на пополнение баланса
+    router.message.register(request_balance, F.text == texts.DEPOSIT)
+    router.message.register(process_balance_amount, BalanceRequestStates.waiting_for_amount)
+    router.message.register(process_balance_proof, 
+                          BalanceRequestStates.waiting_for_proof,
+                          F.content_type.in_({'photo', 'document', 'text'}))
     
     # Поиск шпаргалок
     router.callback_query.register(process_subject, F.data.startswith("subject_"), SearchCheatsheetStates.waiting_for_subject)
@@ -490,15 +698,16 @@ def register_handlers(dp):
     router.message.register(process_file, F.content_type.in_({'photo', 'document', 'text'}), AddCheatsheetStates.waiting_for_file)
     router.message.register(process_price, AddCheatsheetStates.waiting_for_price)
     
-    # Пополнение баланса
-    router.message.register(request_balance, F.text == texts.DEPOSIT)
-    
     # Отмена
     router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter('*'))
     
     # Покупка
     router.callback_query.register(buy_cheatsheet, F.data.startswith("buy_"))
     router.callback_query.register(buy_cheatsheet, F.data.startswith("free_"))
+    
+    # Обработка запросов админом
+    router.callback_query.register(handle_balance_request, F.data.startswith("balance_approve_"))
+    router.callback_query.register(handle_balance_request, F.data.startswith("balance_reject_"))
     
     # Админские команды
     router.message.register(admin_add_balance, Command("addbalance"))
