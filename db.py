@@ -104,9 +104,28 @@ class Database:
         result = self.cursor.fetchone()
         return result[0] if result else 0.0
     
-    def update_user_balance(self, user_id: int, amount: float):
-        self.cursor.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, user_id))
-        self.conn.commit()
+    def update_user_balance(self, user_id: int, amount: float) -> bool:
+        """Обновляет баланс пользователя и возвращает True при успехе"""
+        try:
+            # Проверяем существование пользователя
+            self.cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+            if not self.cursor.fetchone():
+                self.add_user(user_id, f"user_{user_id}")  # Создаем пользователя, если не существует
+                
+            self.cursor.execute(
+                "UPDATE users SET balance = balance + ? WHERE id = ?",
+                (amount, user_id)
+            )
+            self.conn.commit()
+            
+            # Проверяем, что баланс изменился
+            new_balance = self.get_user_balance(user_id)
+            print(f"Баланс пользователя {user_id} изменен на {amount}. Новый баланс: {new_balance}")
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении баланса: {e}")
+            self.conn.rollback()
+            return False
     
     # Предметы
     def add_subject(self, name: str):

@@ -3,13 +3,14 @@ from aiogram import Router, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import ReplyKeyboardRemove, KeyboardButton
 
 from config import config
 from text import texts
 from kb import *
 from db import db
 from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
-from states import SearchCheatsheetStates, AddCheatsheetStates
+from states import SearchCheatsheetStates, AddCheatsheetStates, AddBalanceStates
 
 # Создаем роутер
 router = Router()
@@ -309,6 +310,127 @@ async def deposit_balance(message: types.Message):
         "3. После проверки ваш баланс будет пополнен"
     )
 
+# Создадим клавиатуру для админа
+def admin_balance_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Отмена")],
+        ],
+        resize_keyboard=True
+    )
+
+# Обработчик запроса на пополнение от пользователя
+async def request_balance(message: types.Message):
+    await message.answer(
+        "Для пополнения баланса:\n"
+        "1. Переведите средства\n"
+        "2. Отправьте скриншот перевода и сумму администратору @Vld251",
+        reply_markup=main_menu()
+    )
+
+# Админ: начало процесса пополнения баланса
+async def admin_add_balance(message: types.Message, state: FSMContext):
+    if message.from_user.id != config.ADMIN_ID:
+        return
+    
+    await message.answer(
+        "Введите ID пользователя для пополнения баланса:",
+        reply_markup=admin_balance_kb()
+    )
+    await state.set_state(AddBalanceStates.waiting_for_user_id)
+
+# Получение ID пользователя
+async def process_user_id(message: types.Message, state: FSMContext):
+    if message.text.lower() == "отмена":
+        await message.answer("Действие отменено", reply_markup=main_menu())
+        await state.clear()
+        return
+    
+    try:
+        user_id = int(message.text)
+        await state.update_data(user_id=user_id)
+        await message.answer(
+            "Теперь введите сумму для пополнения:",
+            reply_markup=admin_balance_kb()
+        )
+        await state.set_state(AddBalanceStates.waiting_for_amount)
+    except ValueError:
+        await message.answer("Неверный формат ID. Введите число:")
+
+# Получение суммы и пополнение баланса
+async def process_amount(message: types.Message, state: FSMContext):
+    if message.text.lower() == "отмена":
+        await message.answer("Действие отменено", reply_markup=main_menu())
+        await state.clear()
+        return
+    
+    try:
+        amount = float(message.text)
+        if amount <= 0:
+            await message.answer("Сумма должна быть больше 0")
+            return
+            
+        data = await state.get_data()
+        user_id = data["user_id"]
+        
+        # Пополняем баланс
+        db.update_user_balance(user_id, amount)
+        
+        # Получаем текущий баланс
+        new_balance = db.get_user_balance(user_id)
+        
+        await message.answer(
+            f"✅ Баланс пользователя {user_id} пополнен на {amount} руб.\n"
+            f"Новый баланс: {new_balance} руб.",
+            reply_markup=main_menu()
+        )
+        
+        # Уведомляем пользователя
+        try:
+            await message.bot.send_message(
+                chat_id=user_id,
+                text=f"💰 Ваш баланс пополнен на {amount} руб.\n"
+                     f"Текущий баланс: {new_balance} руб."
+            )
+        except Exception as e:
+            await message.answer(f"Не удалось уведомить пользователя: {e}")
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("Неверный формат суммы. Введите число:")
+
+async def process_balance_request(message: types.Message, state: FSMContext):
+    if message.from_user.id != config.ADMIN_ID:
+        return
+    
+    try:
+        user_id, amount = message.text.split()
+        user_id = int(user_id)
+        amount = float(amount)
+        
+        if amount <= 0:
+            await message.answer("Сумма должна быть больше 0")
+            return
+            
+        db.update_user_balance(user_id, amount)
+        await message.answer(
+            f"Баланс пользователя {user_id} пополнен на {amount} руб.",
+            reply_markup=main_menu()
+        )
+        await state.clear()
+        
+        # Уведомляем пользователя
+        await message.bot.send_message(
+            chat_id=user_id,
+            text=f"Ваш баланс пополнен на {amount} руб. Текущий баланс: {db.get_user_balance(user_id)} руб."
+        )
+    except ValueError:
+        await message.answer("Неверный формат. Введите ID и сумму через пробел")
+    except Exception as e:
+        await message.answer(f"Ошибка: {e}")
+        await state.clear()
+
 def register_handlers(dp):
     # Команды
     router.message.register(cmd_start, Command("start"))
@@ -334,12 +456,20 @@ def register_handlers(dp):
     router.message.register(process_file, F.content_type.in_({'photo', 'document', 'text'}), AddCheatsheetStates.waiting_for_file)
     router.message.register(process_price, AddCheatsheetStates.waiting_for_price)
     
+    # Пополнение баланса
+    router.message.register(request_balance, F.text == texts.DEPOSIT)
+    
     # Отмена
     router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter('*'))
     
     # Покупка
     router.callback_query.register(buy_cheatsheet, F.data.startswith("buy_"))
     router.callback_query.register(buy_cheatsheet, F.data.startswith("free_"))
+    
+    # Админские команды
+    router.message.register(admin_add_balance, Command("addbalance"))
+    router.message.register(process_user_id, AddBalanceStates.waiting_for_user_id)
+    router.message.register(process_amount, AddBalanceStates.waiting_for_amount)
     
     # Включаем роутер в диспетчер
     dp.include_router(router)
