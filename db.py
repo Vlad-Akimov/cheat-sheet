@@ -79,10 +79,15 @@ class Database:
     # Пользователи
     def add_user(self, user_id: int, username: str):
         try:
-            self.cursor.execute("INSERT INTO users (id, username) VALUES (?, ?)", (user_id, username))
+            username = username or f"user_{user_id}"  # Если username None
+            self.cursor.execute(
+                "INSERT OR REPLACE INTO users (id, username) VALUES (?, ?)",
+                (user_id, username)
+            )
             self.conn.commit()
             return True
-        except sqlite3.IntegrityError:
+        except Exception as e:
+            print(f"Ошибка при добавлении пользователя: {e}")
             return False
     
     def get_user_balance(self, user_id: int) -> float:
@@ -117,13 +122,16 @@ class Database:
         return self.cursor.lastrowid
     
     def get_cheatsheet(self, cheatsheet_id: int) -> Optional[Dict]:
+        """Получает информацию о конкретной шпаргалке по ID"""
         self.cursor.execute("""
-        SELECT c.id, s.name, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, u.username 
+        SELECT c.id, s.name as subject, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, 
+            COALESCE(u.username, 'Неизвестный автор') as author
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
-        JOIN users u ON c.author_id = u.id
+        LEFT JOIN users u ON c.author_id = u.id
         WHERE c.id = ? AND c.is_approved = 1
         """, (cheatsheet_id,))
+        
         result = self.cursor.fetchone()
         if not result:
             return None
@@ -142,14 +150,15 @@ class Database:
     
     def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
         query = """
-        SELECT c.id, s.name, c.semester, c.type, c.name, c.price, u.username 
+        SELECT c.id, s.name as subject, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, 
+            COALESCE(u.username, 'Неизвестный автор') as author
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
-        JOIN users u ON c.author_id = u.id
+        LEFT JOIN users u ON c.author_id = u.id
         WHERE c.is_approved = 1
         """
-        params = []
         
+        params = []
         if subject:
             query += " AND s.name = ?"
             params.append(subject)
@@ -161,15 +170,19 @@ class Database:
             params.append(type_)
         
         self.cursor.execute(query, params)
+        results = self.cursor.fetchall()
+        
         return [{
             "id": row[0],
             "subject": row[1],
             "semester": row[2],
             "type": row[3],
             "name": row[4],
-            "price": row[5],
-            "author": row[6]
-        } for row in self.cursor.fetchall()]
+            "file_id": row[5],
+            "file_type": row[6],
+            "price": row[7],
+            "author": row[8]
+        } for row in results]
     
     def get_user_cheatsheets(self, user_id: int) -> List[Dict]:
         self.cursor.execute("""
@@ -189,8 +202,14 @@ class Database:
         } for row in self.cursor.fetchall()]
     
     def approve_cheatsheet(self, cheatsheet_id: int):
-        self.cursor.execute("UPDATE cheatsheets SET is_approved = 1 WHERE id = ?", (cheatsheet_id,))
-        self.conn.commit()
+        """Одобряет шпаргалку"""
+        try:
+            self.cursor.execute("UPDATE cheatsheets SET is_approved = 1 WHERE id = ?", (cheatsheet_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при одобрении шпаргалки: {e}")
+            return False
     
     def reject_cheatsheet(self, cheatsheet_id: int):
         self.cursor.execute("DELETE FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
@@ -198,13 +217,16 @@ class Database:
     
     # Покупки
     def add_purchase(self, user_id: int, cheatsheet_id: int, amount: float):
-        self.cursor.execute(
-            "INSERT INTO purchases (user_id, cheatsheet_id, amount) VALUES (?, ?, ?)",
-            (user_id, cheatsheet_id, amount)
-        )
-        self.conn.commit()
-    
-    def close(self):
-        self.conn.close()
+        """Добавляет запись о покупке"""
+        try:
+            self.cursor.execute(
+                "INSERT INTO purchases (user_id, cheatsheet_id, amount) VALUES (?, ?, ?)",
+                (user_id, cheatsheet_id, amount)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при добавлении покупки: {e}")
+            return False
 
 db = Database()

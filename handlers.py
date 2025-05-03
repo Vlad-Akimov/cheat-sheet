@@ -1,3 +1,4 @@
+import logging
 from aiogram import Router, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -45,7 +46,11 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
     data = await state.get_data()
     
-    cheatsheets = db.get_cheatsheets(subject=data["subject"], semester=data["semester"], type_=type_)
+    cheatsheets = db.get_cheatsheets(
+        subject=data.get("subject"),
+        semester=data.get("semester"),
+        type_=type_
+    )
     
     if not cheatsheets:
         await reply_with_menu(callback, texts.NO_CHEATSHEETS, delete_current=True)
@@ -53,7 +58,13 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
         return
     
     for cheatsheet in cheatsheets:
+        # Проверяем наличие всех необходимых полей
+        if not all(key in cheatsheet for key in ['subject', 'semester', 'type', 'name', 'author', 'price', 'file_id', 'file_type']):
+            print(f"Неполные данные шпаргалки: {cheatsheet}")
+            continue
+            
         text = texts.CHEATSHEET_INFO.format(
+            name=cheatsheet["name"],
             subject=cheatsheet["subject"],
             semester=cheatsheet["semester"],
             type=cheatsheet["type"],
@@ -136,13 +147,13 @@ async def process_price(message: types.Message, state: FSMContext):
     
     data = await state.get_data()
     
-    # Проверяем наличие всех необходимых данных
+    # Проверяем наличие всех необходимых полей
     required_fields = ['subject', 'semester', 'type', 'name', 'file_id', 'file_type']
-    for field in required_fields:
-        if field not in data:
-            await message.answer("Произошла ошибка: отсутствуют необходимые данные. Пожалуйста, начните процесс заново.")
-            await state.clear()
-            return
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        await message.answer(f"Ошибка: отсутствуют данные ({', '.join(missing_fields)}). Начните заново.")
+        await state.clear()
+        return
     
     subject_id = db.cursor.execute("SELECT id FROM subjects WHERE name = ?", (data["subject"],)).fetchone()
     if not subject_id:
@@ -176,20 +187,20 @@ async def process_price(message: types.Message, state: FSMContext):
         await message.bot.send_photo(
             chat_id=config.ADMIN_ID,
             photo=data["file_id"],
-            caption=f"Название: {data['name']}\n\n{admin_text}",
+            caption=admin_text,
             reply_markup=admin_review_kb(cheatsheet_id)
         )
     elif data["file_type"] == "document":
         await message.bot.send_document(
             chat_id=config.ADMIN_ID,
             document=data["file_id"],
-            caption=f"Название: {data['name']}\n\n{admin_text}",
+            caption=admin_text,
             reply_markup=admin_review_kb(cheatsheet_id)
         )
     else:
         await message.bot.send_message(
             chat_id=config.ADMIN_ID,
-            text=f"Название: {data['name']}\n\n{admin_text}\n\nТекст шпаргалки:\n\n{data['file_id']}",
+            text=f"{admin_text}\n\nТекст шпаргалки:\n\n{data['file_id']}",
             reply_markup=admin_review_kb(cheatsheet_id)
         )
     
@@ -221,16 +232,19 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
     cheatsheet_id = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
     
+    # Получаем информацию о шпаргалке
     cheatsheet = db.get_cheatsheet(cheatsheet_id)
     if not cheatsheet:
-        await reply_with_menu(callback, "Шпаргалка не найдена.", delete_current=True)
+        await reply_with_menu(callback, "Шпаргалка не найдена или не одобрена.", delete_current=True)
         return
     
+    # Проверяем баланс пользователя
     user_balance = db.get_user_balance(user_id)
     if user_balance < cheatsheet["price"]:
         await callback.answer(texts.NOT_ENOUGH_MONEY)
         return
     
+    # Обработка бесплатных шпаргалок
     if cheatsheet["price"] == 0:
         if cheatsheet["file_type"] == "photo":
             await callback.message.answer_photo(cheatsheet["file_id"])
@@ -238,37 +252,51 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
             await callback.message.answer_document(cheatsheet["file_id"])
         else:
             await callback.message.answer(cheatsheet["file_id"])
-        
         await callback.answer()
         return
     
-    db.update_user_balance(user_id, -cheatsheet["price"])
-    author_amount = cheatsheet["price"] * (1 - config.ADMIN_PERCENT)
-    db.update_user_balance(cheatsheet["author_id"], author_amount)
-    admin_amount = cheatsheet["price"] * config.ADMIN_PERCENT
-    db.update_user_balance(config.ADMIN_ID, admin_amount)
-    db.add_purchase(user_id, cheatsheet_id, cheatsheet["price"])
-    
-    if cheatsheet["file_type"] == "photo":
-        await callback.message.answer_photo(
-            cheatsheet["file_id"],
-            caption=texts.PURCHASE_SUCCESS,
-            reply_markup=main_menu()
-        )
-    elif cheatsheet["file_type"] == "document":
-        await callback.message.answer_document(
-            cheatsheet["file_id"],
-            caption=texts.PURCHASE_SUCCESS,
-            reply_markup=main_menu()
-        )
-    else:
-        await callback.message.answer(
-            f"{texts.PURCHASE_SUCCESS}\n\n{cheatsheet['file_id']}",
-            reply_markup=main_menu()
-        )
-    
-    await callback.message.delete()
-    await callback.answer()
+    # Обработка платных шпаргалок
+    try:
+        # Списание средств у покупателя
+        db.update_user_balance(user_id, -cheatsheet["price"])
+        
+        # Начисление средств автору (минус процент администратора)
+        author_amount = cheatsheet["price"] * (1 - config.ADMIN_PERCENT)
+        db.update_user_balance(cheatsheet["author_id"], author_amount)
+        
+        # Начисление процента администратору
+        admin_amount = cheatsheet["price"] * config.ADMIN_PERCENT
+        db.update_user_balance(config.ADMIN_ID, admin_amount)
+        
+        # Запись о покупке
+        db.add_purchase(user_id, cheatsheet_id, cheatsheet["price"])
+        
+        # Отправка шпаргалки пользователю
+        if cheatsheet["file_type"] == "photo":
+            await callback.message.answer_photo(
+                cheatsheet["file_id"],
+                caption=texts.PURCHASE_SUCCESS,
+                reply_markup=main_menu()
+            )
+        elif cheatsheet["file_type"] == "document":
+            await callback.message.answer_document(
+                cheatsheet["file_id"],
+                caption=texts.PURCHASE_SUCCESS,
+                reply_markup=main_menu()
+            )
+        else:
+            await callback.message.answer(
+                f"{texts.PURCHASE_SUCCESS}\n\n{cheatsheet['file_id']}",
+                reply_markup=main_menu()
+            )
+        
+        # Удаляем сообщение с кнопкой покупки
+        await callback.message.delete()
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"Ошибка при обработке покупки: {e}")
+        await callback.answer("Произошла ошибка при обработке покупки. Пожалуйста, попробуйте позже.")
 
 async def deposit_balance(message: types.Message):
     await reply_with_menu(
