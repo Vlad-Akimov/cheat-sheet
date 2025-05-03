@@ -61,6 +61,15 @@ class Database:
         
         self.conn.commit()
     
+    def close(self):
+        """Закрывает соединение с базой данных"""
+        try:
+            if self.conn:
+                self.conn.close()
+                print("Соединение с базой данных закрыто")
+        except Exception as e:
+            print(f"Ошибка при закрытии соединения: {e}")
+    
     def _migrate_db(self):
         """Добавляем отсутствующие колонки в существующие таблицы"""
         try:
