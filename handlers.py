@@ -230,76 +230,110 @@ async def show_balance(message: types.Message):
     await reply_with_menu(message, f"💰 Ваш баланс: {balance} руб.")
 
 async def buy_cheatsheet(callback: types.CallbackQuery):
-    cheatsheet_id = int(callback.data.split("_")[1])
-    user_id = callback.from_user.id
-    
-    cheatsheet = db.get_cheatsheet(cheatsheet_id)
-    if not cheatsheet:
-        await reply_with_menu(callback, "Шпаргалка не найдена или не одобрена.", delete_current=True)
-        return
-    
-    user_balance = db.get_user_balance(user_id)
-    if user_balance < cheatsheet["price"]:
-        await callback.answer(texts.NOT_ENOUGH_MONEY, show_alert=True)
-        await reply_with_menu(callback, 
-                            f"Недостаточно средств. Ваш баланс: {user_balance} руб.\n"
-                            f"Требуется: {cheatsheet['price']} руб.\n\n"
-                            "Пополните баланс и попробуйте снова.")
-        return
-    
-    # Обработка бесплатных шпаргалок
-    if cheatsheet["price"] == 0:
-        if cheatsheet["file_type"] == "photo":
-            await callback.message.answer_photo(cheatsheet["file_id"])
-        elif cheatsheet["file_type"] == "document":
-            await callback.message.answer_document(cheatsheet["file_id"])
-        else:
-            await callback.message.answer(cheatsheet["file_id"])
-        await callback.answer()
-        return
-    
-    # Обработка платных шпаргалок
     try:
-        # Списание средств у покупателя
-        db.update_user_balance(user_id, -cheatsheet["price"])
-        
-        # Начисление средств автору (минус процент администратора)
-        author_amount = cheatsheet["price"] * (1 - config.ADMIN_PERCENT)
-        db.update_user_balance(cheatsheet["author_id"], author_amount)
-        
-        # Начисление процента администратору
-        admin_amount = cheatsheet["price"] * config.ADMIN_PERCENT
-        db.update_user_balance(config.ADMIN_ID, admin_amount)
-        
-        # Запись о покупке
-        db.add_purchase(user_id, cheatsheet_id, cheatsheet["price"])
-        
-        # Отправка шпаргалки пользователю
-        if cheatsheet["file_type"] == "photo":
-            await callback.message.answer_photo(
-                cheatsheet["file_id"],
-                caption=texts.PURCHASE_SUCCESS,
-                reply_markup=main_menu()
-            )
-        elif cheatsheet["file_type"] == "document":
-            await callback.message.answer_document(
-                cheatsheet["file_id"],
-                caption=texts.PURCHASE_SUCCESS,
-                reply_markup=main_menu()
-            )
-        else:
+        # Разбираем callback data
+        if not callback.data:
+            await callback.answer("Неверный запрос")
+            return
+
+        data_parts = callback.data.split("_")
+        if len(data_parts) != 2:
+            await callback.answer("Неверный формат запроса")
+            return
+
+        action, identifier = data_parts
+
+        # Обработка бесплатных шпаргалок
+        if action == "free":
             await callback.message.answer(
-                f"{texts.PURCHASE_SUCCESS}\n\n{cheatsheet['file_id']}",
+                f"📄 Ваша шпаргалка:\n\n{identifier}",
                 reply_markup=main_menu()
             )
-        
-        # Удаляем сообщение с кнопкой покупки
-        await callback.message.delete()
-        await callback.answer()
-        
+            await callback.answer()
+            return
+
+        # Обработка платных шпаргалок
+        try:
+            cheatsheet_id = int(identifier)
+        except ValueError:
+            await callback.answer("Неверный ID шпаргалки")
+            return
+
+        user_id = callback.from_user.id
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+
+        if not cheatsheet:
+            await callback.answer("Шпаргалка не найдена", show_alert=True)
+            return
+
+        # Проверяем наличие всех необходимых полей
+        required_fields = ['price', 'author_id', 'file_id', 'file_type']
+        if not all(field in cheatsheet for field in required_fields):
+            await callback.answer("Ошибка данных шпаргалки", show_alert=True)
+            return
+
+        # Проверка баланса
+        user_balance = db.get_user_balance(user_id)
+        if user_balance < cheatsheet["price"]:
+            await callback.answer(
+                f"Недостаточно средств. Нужно: {cheatsheet['price']} руб. Ваш баланс: {user_balance} руб.",
+                show_alert=True
+            )
+            return
+
+        # Начинаем транзакцию
+        try:
+            # Списание средств у покупателя
+            if not db.update_user_balance(user_id, -cheatsheet["price"]):
+                raise Exception("Не удалось списать средства")
+
+            # Начисление автору (если это не админ)
+            if cheatsheet["author_id"] != config.ADMIN_ID:
+                author_amount = round(cheatsheet["price"] * (1 - config.ADMIN_PERCENT), 2)
+                if not db.update_user_balance(cheatsheet["author_id"], author_amount):
+                    raise Exception("Не удалось начислить средства автору")
+
+            # Начисление администратору
+            admin_amount = round(cheatsheet["price"] * config.ADMIN_PERCENT, 2)
+            if not db.update_user_balance(config.ADMIN_ID, admin_amount):
+                raise Exception("Не удалось начислить средства администратору")
+
+            # Запись о покупке
+            if not db.add_purchase(user_id, cheatsheet_id, cheatsheet["price"]):
+                raise Exception("Не удалось записать покупку")
+
+            # Отправка шпаргалки пользователю
+            if cheatsheet["file_type"] == "photo":
+                await callback.message.answer_photo(
+                    cheatsheet["file_id"],
+                    caption=f"✅ {texts.PURCHASE_SUCCESS}",
+                    reply_markup=main_menu()
+                )
+            elif cheatsheet["file_type"] == "document":
+                await callback.message.answer_document(
+                    cheatsheet["file_id"],
+                    caption=f"✅ {texts.PURCHASE_SUCCESS}",
+                    reply_markup=main_menu()
+                )
+            else:  # Текстовые шпаргалки
+                await callback.message.answer(
+                    f"✅ {texts.PURCHASE_SUCCESS}\n\n{cheatsheet['file_id']}",
+                    reply_markup=main_menu()
+                )
+
+            await callback.message.delete()
+            await callback.answer()
+
+        except Exception as e:
+            # Откатываем изменения в случае ошибки
+            db.conn.rollback()
+            await callback.answer("Ошибка при обработке покупки", show_alert=True)
+            print(f"Ошибка транзакции: {e}")
+            return
+
     except Exception as e:
-        logging.error(f"Ошибка при обработке покупки: {e}")
-        await callback.answer("Произошла ошибка при обработке покупки. Пожалуйста, попробуйте позже.")
+        await callback.answer("Произошла ошибка", show_alert=True)
+        print(f"Неожиданная ошибка в buy_cheatsheet: {e}")
 
 async def deposit_balance(message: types.Message):
     await reply_with_menu(

@@ -10,6 +10,11 @@ class Database:
         self._init_db()
         self._migrate_db()  # Добавляем миграции
     
+    def rollback(self):
+        """Откатывает текущую транзакцию"""
+        self.conn.rollback()
+        print("Транзакция откачена")
+    
     def _init_db(self):
         # Пользователи
         self.cursor.execute("""
@@ -105,26 +110,19 @@ class Database:
         return result[0] if result else 0.0
     
     def update_user_balance(self, user_id: int, amount: float) -> bool:
-        """Обновляет баланс пользователя и возвращает True при успехе"""
+        """Обновляет баланс пользователя в рамках транзакции"""
         try:
-            # Проверяем существование пользователя
-            self.cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
-            if not self.cursor.fetchone():
-                self.add_user(user_id, f"user_{user_id}")  # Создаем пользователя, если не существует
-                
             self.cursor.execute(
                 "UPDATE users SET balance = balance + ? WHERE id = ?",
                 (amount, user_id)
             )
-            self.conn.commit()
-            
             # Проверяем, что баланс изменился
-            new_balance = self.get_user_balance(user_id)
+            self.cursor.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+            new_balance = self.cursor.fetchone()[0]
             print(f"Баланс пользователя {user_id} изменен на {amount}. Новый баланс: {new_balance}")
             return True
         except Exception as e:
             print(f"Ошибка при обновлении баланса: {e}")
-            self.conn.rollback()
             return False
     
     # Предметы
@@ -150,9 +148,10 @@ class Database:
         return self.cursor.lastrowid
     
     def get_cheatsheet(self, cheatsheet_id: int) -> Optional[Dict]:
-        """Получает информацию о конкретной шпаргалке по ID"""
+        """Получает полную информацию о шпаргалке"""
         self.cursor.execute("""
-        SELECT c.id, s.name as subject, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, 
+        SELECT c.id, s.name as subject, c.semester, c.type, c.name, 
+            c.file_id, c.file_type, c.price, c.author_id,
             COALESCE(u.username, 'Неизвестный автор') as author
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
@@ -173,7 +172,8 @@ class Database:
             "file_id": result[5],
             "file_type": result[6],
             "price": result[7],
-            "author": result[8]
+            "author_id": result[8],  # Добавляем author_id
+            "author": result[9]
         }
     
     def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
@@ -244,17 +244,19 @@ class Database:
         self.conn.commit()
     
     # Покупки
-    def add_purchase(self, user_id: int, cheatsheet_id: int, amount: float):
-        """Добавляет запись о покупке"""
+    def add_purchase(self, user_id: int, cheatsheet_id: int, amount: float) -> bool:
+        """Добавляет запись о покупке и возвращает статус операции"""
         try:
             self.cursor.execute(
                 "INSERT INTO purchases (user_id, cheatsheet_id, amount) VALUES (?, ?, ?)",
                 (user_id, cheatsheet_id, amount)
             )
             self.conn.commit()
+            print(f"Запись о покупке добавлена: user={user_id}, item={cheatsheet_id}, amount={amount}")
             return True
         except Exception as e:
             print(f"Ошибка при добавлении покупки: {e}")
+            self.conn.rollback()
             return False
 
 db = Database()
