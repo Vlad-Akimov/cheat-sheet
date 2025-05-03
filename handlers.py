@@ -232,16 +232,18 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
     cheatsheet_id = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
     
-    # Получаем информацию о шпаргалке
     cheatsheet = db.get_cheatsheet(cheatsheet_id)
     if not cheatsheet:
         await reply_with_menu(callback, "Шпаргалка не найдена или не одобрена.", delete_current=True)
         return
     
-    # Проверяем баланс пользователя
     user_balance = db.get_user_balance(user_id)
     if user_balance < cheatsheet["price"]:
-        await callback.answer(texts.NOT_ENOUGH_MONEY)
+        await callback.answer(texts.NOT_ENOUGH_MONEY, show_alert=True)
+        await reply_with_menu(callback, 
+                            f"Недостаточно средств. Ваш баланс: {user_balance} руб.\n"
+                            f"Требуется: {cheatsheet['price']} руб.\n\n"
+                            "Пополните баланс и попробуйте снова.")
         return
     
     # Обработка бесплатных шпаргалок
