@@ -5,10 +5,16 @@ from db import db
 
 class UserMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: TelegramObject, data: dict):
-        # Проверяем, что это сообщение (не callback и т.д.)
-        if isinstance(event, types.Message):
+        # Проверяем, что это сообщение или callback (везде, где есть from_user)
+        if hasattr(event, 'from_user'):
             user = event.from_user
-            db.add_user(user.id, user.username)
+            # Добавляем пользователя с полной информацией
+            db.add_user(
+                user_id=user.id,
+                username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name
+            )
         
         # Продолжаем обработку
         return await handler(event, data)
