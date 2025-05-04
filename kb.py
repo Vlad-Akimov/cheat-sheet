@@ -53,6 +53,15 @@ def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     builder.adjust(2)  # 2 кнопки в ряду
     return builder.as_markup()
 
+# Создадим клавиатуру для админа
+def admin_balance_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Отмена")],
+        ],
+        resize_keyboard=True
+    )
+
 # Кнопка покупки
 def buy_kb(cheatsheet_id: int, price: float) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()

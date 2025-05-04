@@ -3,3 +3,4 @@ venv/
 .env/
 config.py
 cheatsheets.db
+requirements.txt
