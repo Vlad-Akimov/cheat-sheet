@@ -16,11 +16,14 @@ class Database:
         print("Транзакция откачена")
     
     def _init_db(self):
-        # Пользователи
+        # Пользователи (обновленная структура)
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY,
             username TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            full_name TEXT,
             balance REAL DEFAULT 0
         )
         """)
@@ -96,25 +99,44 @@ class Database:
     def _migrate_db(self):
         """Добавляем отсутствующие колонки в существующие таблицы"""
         try:
+            # Проверяем наличие новых колонок в таблице users
+            self.cursor.execute("PRAGMA table_info(users)")
+            columns = [column[1] for column in self.cursor.fetchall()]
+            
+            # Добавляем новые колонки, если их нет
+            if 'first_name' not in columns:
+                self.cursor.execute("ALTER TABLE users ADD COLUMN first_name TEXT")
+            if 'last_name' not in columns:
+                self.cursor.execute("ALTER TABLE users ADD COLUMN last_name TEXT")
+            if 'full_name' not in columns:
+                self.cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
+            
             # Проверяем наличие колонки name в таблице cheatsheets
             self.cursor.execute("PRAGMA table_info(cheatsheets)")
             columns = [column[1] for column in self.cursor.fetchall()]
             
             if 'name' not in columns:
                 self.cursor.execute("ALTER TABLE cheatsheets ADD COLUMN name TEXT")
-                self.conn.commit()
-                print("Добавлена колонка 'name' в таблицу cheatsheets")
+            
+            self.conn.commit()
+            print("Миграции базы данных успешно применены")
                 
         except Exception as e:
             print(f"Ошибка при миграции базы данных: {e}")
     
-    # Пользователи
-    def add_user(self, user_id: int, username: str):
+    # Пользователи (обновленный метод)
+    def add_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None):
+        """Добавляет или обновляет пользователя с дополнительной информацией"""
         try:
             username = username or f"user_{user_id}"  # Если username None
+            full_name = " ".join(filter(None, [first_name, last_name])).strip()
+            full_name = full_name if full_name else None
+            
             self.cursor.execute(
-                "INSERT OR REPLACE INTO users (id, username) VALUES (?, ?)",
-                (user_id, username)
+                """INSERT OR REPLACE INTO users 
+                (id, username, first_name, last_name, full_name) 
+                VALUES (?, ?, ?, ?, ?)""",
+                (user_id, username, first_name, last_name, full_name)
             )
             self.conn.commit()
             return True
@@ -285,7 +307,6 @@ class Database:
             self.conn.rollback()
             return False
     
-    
     def add_balance_request(self, user_id: int, amount: float, proof_text: str = None, 
                           file_id: str = None, file_type: str = None) -> int:
         """Добавляет запрос на пополнение с проверкой"""
@@ -328,22 +349,5 @@ class Database:
             print(f"Ошибка обновления статуса запроса: {e}")
             self.conn.rollback()
             return False
-    
-    def _migrate_db(self):
-        """Применяет необходимые миграции к базе данных"""
-        try:
-            # Проверяем существование колонок в balance_requests
-            self.cursor.execute("PRAGMA table_info(balance_requests)")
-            columns = [column[1] for column in self.cursor.fetchall()]
-            
-            # Добавляем отсутствующие колонки
-            if 'file_id' not in columns:
-                self.cursor.execute("ALTER TABLE balance_requests ADD COLUMN file_id TEXT")
-            if 'file_type' not in columns:
-                self.cursor.execute("ALTER TABLE balance_requests ADD COLUMN file_type TEXT")
-                
-            self.conn.commit()
-        except Exception as e:
-            print(f"Ошибка миграции базы данных: {e}")
 
 db = Database()
