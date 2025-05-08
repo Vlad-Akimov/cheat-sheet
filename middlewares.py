@@ -1,4 +1,3 @@
-from aiogram import types
 from aiogram.types import TelegramObject
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 from db import db

@@ -4,7 +4,6 @@ from aiogram.types import CallbackQuery
 from config import config
 from db import db
 from text import texts
-from kb import main_menu
 
 async def approve_cheatsheet(callback: CallbackQuery):
     cheatsheet_id = int(callback.data.split("_")[1])

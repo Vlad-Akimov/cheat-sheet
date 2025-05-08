@@ -1,7 +1,6 @@
 import sqlite3
 from config import config
-from typing import List, Dict, Union, Optional
-import os
+from typing import List, Dict, Optional
 
 class Database:
     def __init__(self):

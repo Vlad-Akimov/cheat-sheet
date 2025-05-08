@@ -1,16 +1,11 @@
-import logging
-from aiogram import Bot, Router, types, F
-from aiogram.filters import Command, StateFilter
+from aiogram import Bot, Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardRemove, KeyboardButton, InputFile, InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton
 
 from config import config
-from text import texts
 from kb import *
 from db import db
-from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
-from states import SearchCheatsheetStates, AddCheatsheetStates, AddBalanceStates, BalanceRequestStates
+from states import AddBalanceStates
 
 # Создаем роутер
 router = Router()
