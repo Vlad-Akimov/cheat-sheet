@@ -194,8 +194,8 @@ class Database:
         self.conn.commit()
         return self.cursor.lastrowid
     
-    def get_cheatsheet(self, cheatsheet_id: int) -> Optional[Dict]:
-        """Получает полную информацию о шпаргалке"""
+    def get_cheatsheet(self, cheatsheet_id: int, user_id: int = None) -> Optional[Dict]:
+        """Получает полную информацию о шпаргалке с проверкой прав доступа"""
         self.cursor.execute("""
         SELECT c.id, s.name as subject, c.semester, c.type, c.name, 
             c.file_id, c.file_type, c.price, c.author_id,
@@ -203,8 +203,8 @@ class Database:
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         LEFT JOIN users u ON c.author_id = u.id
-        WHERE c.id = ? AND c.is_approved = 1
-        """, (cheatsheet_id,))
+        WHERE c.id = ? AND (c.is_approved = 1 OR c.author_id = ?)
+        """, (cheatsheet_id, user_id if user_id else 0))
         
         result = self.cursor.fetchone()
         if not result:
@@ -219,21 +219,21 @@ class Database:
             "file_id": result[5],
             "file_type": result[6],
             "price": result[7],
-            "author_id": result[8],  # Добавляем author_id
+            "author_id": result[8],
             "author": result[9]
         }
     
-    def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
+    def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None, user_id: int = None) -> List[Dict]:
         query = """
         SELECT c.id, s.name as subject, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, 
-            COALESCE(u.username, 'Неизвестный автор') as author
+            COALESCE(u.username, 'Неизвестный автор') as author, c.author_id
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         LEFT JOIN users u ON c.author_id = u.id
-        WHERE c.is_approved = 1
+        WHERE c.is_approved = 1 OR c.author_id = ?
         """
         
-        params = []
+        params = [user_id if user_id else 0]
         if subject:
             query += " AND s.name = ?"
             params.append(subject)
@@ -256,25 +256,33 @@ class Database:
             "file_id": row[5],
             "file_type": row[6],
             "price": row[7],
-            "author": row[8]
+            "author": row[8],
+            "author_id": row[9]
         } for row in results]
     
     def get_user_cheatsheets(self, user_id: int) -> List[Dict]:
+        # Получаем шпаргалки, созданные пользователем
         self.cursor.execute("""
         SELECT c.id, s.name, c.semester, c.type, c.name, c.price, c.is_approved 
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         WHERE c.author_id = ?
         """, (user_id,))
-        return [{
+        created = [{
             "id": row[0],
             "subject": row[1],
             "semester": row[2],
             "type": row[3],
             "name": row[4],
             "price": row[5],
-            "is_approved": bool(row[6])
+            "is_approved": bool(row[6]),
+            "is_purchased": False
         } for row in self.cursor.fetchall()]
+        
+        # Получаем шпаргалки, купленные пользователем
+        purchased = self.get_purchased_cheatsheets(user_id)
+        
+        return created + purchased
     
     def approve_cheatsheet(self, cheatsheet_id: int):
         """Одобряет шпаргалку"""
@@ -348,5 +356,24 @@ class Database:
             print(f"Ошибка обновления статуса запроса: {e}")
             self.conn.rollback()
             return False
+    
+    def get_purchased_cheatsheets(self, user_id: int) -> List[Dict]:
+        self.cursor.execute("""
+        SELECT c.id, s.name, c.semester, c.type, c.name, c.price 
+        FROM purchases p
+        JOIN cheatsheets c ON p.cheatsheet_id = c.id
+        JOIN subjects s ON c.subject_id = s.id
+        WHERE p.user_id = ?
+        """, (user_id,))
+        return [{
+            "id": row[0],
+            "subject": row[1],
+            "semester": row[2],
+            "type": row[3],
+            "name": row[4],
+            "price": row[5],
+            "is_approved": True,
+            "is_purchased": True
+        } for row in self.cursor.fetchall()]
 
 db = Database()

@@ -4,3 +4,4 @@ venv/
 config.py
 cheatsheets.db
 requirements.txt
+handlers1.py

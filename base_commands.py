@@ -55,7 +55,13 @@ async def show_user_cheatsheets(message: types.Message):
     
     text = "📚 Ваши шпаргалки:\n\n"
     for cs in cheatsheets:
-        status = "✅ Одобрена" if cs["is_approved"] else "⏳ На модерации"
+        if cs.get("is_purchased", False):
+            status = "🛒 Куплена"
+        elif cs["is_approved"]:
+            status = "✅ Одобрена"
+        else:
+            status = "⏳ На модерации"
+            
         text += f"📌 {cs['name']}\n{cs['subject']}, {cs['semester']} семестр, {cs['type']} - {cs['price']} руб. ({status})\n\n"
     
     await reply_with_menu(message, text)
@@ -85,7 +91,8 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     cheatsheets = db.get_cheatsheets(
         subject=data.get("subject"),
         semester=data.get("semester"),
-        type_=type_
+        type_=type_,
+        user_id=callback.from_user.id
     )
     
     if not cheatsheets:
@@ -95,10 +102,25 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     
     for cheatsheet in cheatsheets:
         # Проверяем наличие всех необходимых полей
-        if not all(key in cheatsheet for key in ['subject', 'semester', 'type', 'name', 'author', 'price', 'file_id', 'file_type']):
+        if not all(key in cheatsheet for key in ['subject', 'semester', 'type', 'name', 'author', 'price', 'file_id', 'file_type', 'author_id']):
             print(f"Неполные данные шпаргалки: {cheatsheet}")
             continue
             
+        # Если шпаргалка принадлежит пользователю или куплена - делаем бесплатной
+        if cheatsheet["author_id"] == callback.from_user.id:
+            markup = free_kb(cheatsheet["file_id"])
+        else:
+            # Проверяем, куплена ли шпаргалка
+            db.cursor.execute("SELECT 1 FROM purchases WHERE user_id = ? AND cheatsheet_id = ?", 
+                            (callback.from_user.id, cheatsheet["id"]))
+            if db.cursor.fetchone():
+                markup = free_kb(cheatsheet["file_id"])
+            else:
+                if cheatsheet["price"] > 0:
+                    markup = buy_kb(cheatsheet["id"], cheatsheet["price"])
+                else:
+                    markup = free_kb(cheatsheet["file_id"])
+        
         text = texts.CHEATSHEET_INFO.format(
             name=cheatsheet["name"],
             subject=cheatsheet["subject"],
@@ -107,11 +129,6 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
             author=cheatsheet["author"],
             price=cheatsheet["price"]
         )
-        
-        if cheatsheet["price"] > 0:
-            markup = buy_kb(cheatsheet["id"], cheatsheet["price"])
-        else:
-            markup = free_kb(cheatsheet["file_id"])
         
         await callback.message.answer(text, reply_markup=markup)
     
@@ -288,7 +305,7 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
             return
 
         user_id = callback.from_user.id
-        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        cheatsheet = db.get_cheatsheet(cheatsheet_id, user_id)
 
         if not cheatsheet:
             await callback.answer("Шпаргалка не найдена", show_alert=True)
@@ -298,6 +315,54 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
         required_fields = ['price', 'author_id', 'file_id', 'file_type']
         if not all(field in cheatsheet for field in required_fields):
             await callback.answer("Ошибка данных шпаргалки", show_alert=True)
+            return
+
+        # Если шпаргалка принадлежит пользователю - сразу выдаем
+        if cheatsheet["author_id"] == user_id:
+            if cheatsheet["file_type"] == "photo":
+                await callback.message.answer_photo(
+                    cheatsheet["file_id"],
+                    caption="✅ Ваша шпаргалка:",
+                    reply_markup=main_menu()
+                )
+            elif cheatsheet["file_type"] == "document":
+                await callback.message.answer_document(
+                    cheatsheet["file_id"],
+                    caption="✅ Ваша шпаргалка:",
+                    reply_markup=main_menu()
+                )
+            else:
+                await callback.message.answer(
+                    f"✅ Ваша шпаргалка:\n\n{cheatsheet['file_id']}",
+                    reply_markup=main_menu()
+                )
+            await callback.message.delete()
+            await callback.answer()
+            return
+
+        # Проверяем, не куплена ли уже шпаргалка
+        db.cursor.execute("SELECT 1 FROM purchases WHERE user_id = ? AND cheatsheet_id = ?", 
+                         (user_id, cheatsheet_id))
+        if db.cursor.fetchone():
+            if cheatsheet["file_type"] == "photo":
+                await callback.message.answer_photo(
+                    cheatsheet["file_id"],
+                    caption="✅ Ваша шпаргалка:",
+                    reply_markup=main_menu()
+                )
+            elif cheatsheet["file_type"] == "document":
+                await callback.message.answer_document(
+                    cheatsheet["file_id"],
+                    caption="✅ Ваша шпаргалка:",
+                    reply_markup=main_menu()
+                )
+            else:
+                await callback.message.answer(
+                    f"✅ Ваша шпаргалка:\n\n{cheatsheet['file_id']}",
+                    reply_markup=main_menu()
+                )
+            await callback.message.delete()
+            await callback.answer()
             return
 
         # Проверка баланса
