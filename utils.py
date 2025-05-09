@@ -64,7 +64,7 @@ async def delete_previous_messages(message: types.Message, count: int = 2):
             if message.message_id - i <= 1:
                 break
     except Exception as e:
-        logging.warning(f"Не удалось удалить сообщение: {e}")
+        pass
 
 
 async def reply_with_menu(
