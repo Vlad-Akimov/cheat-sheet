@@ -230,19 +230,24 @@ class Database:
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         LEFT JOIN users u ON c.author_id = u.id
-        WHERE c.is_approved = 1 OR c.author_id = ?
+        WHERE (c.is_approved = 1 OR c.author_id = ?)
         """
         
         params = [user_id if user_id else 0]
-        if subject:
+        
+        # Добавляем фильтры только если они переданы
+        if subject is not None:
             query += " AND s.name = ?"
             params.append(subject)
-        if semester:
+        if semester is not None:
             query += " AND c.semester = ?"
             params.append(semester)
-        if type_:
+        if type_ is not None:
             query += " AND c.type = ?"
             params.append(type_)
+        
+        # Добавляем сортировку для стабильности результатов
+        query += " ORDER BY c.id"
         
         self.cursor.execute(query, params)
         results = self.cursor.fetchall()

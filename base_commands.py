@@ -73,27 +73,21 @@ async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
     data = await state.get_data()
     
-    # Получаем отфильтрованные шпаргалки пользователя
-    cheatsheets = db.get_user_cheatsheets(callback.from_user.id)
+    # Получаем отфильтрованные шпаргалки пользователя с применением всех фильтров
+    cheatsheets = db.get_user_cheatsheets(
+        callback.from_user.id,
+        subject=data.get('subject'),
+        semester=data.get('semester'),
+        type_=type_
+    )
     
-    # Применяем фильтры
-    filtered = []
-    for cs in cheatsheets:
-        if data.get('subject') and cs['subject'] != data['subject']:
-            continue
-        if data.get('semester') and cs['semester'] != data['semester']:
-            continue
-        if data.get('type') and cs['type'] != type_:
-            continue
-        filtered.append(cs)
-    
-    if not filtered:
+    if not cheatsheets:
         await reply_with_menu(callback, "По вашему запросу ничего не найдено.", delete_current=True)
         await state.clear()
         return
     
     text = "📚 Найденные шпаргалки:\n\n"
-    for cs in filtered:
+    for cs in cheatsheets:
         if cs.get("is_purchased", False):
             status = "🛒 Куплена"
         elif cs["is_approved"]:
@@ -128,10 +122,17 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
     data = await state.get_data()
     
+    # Проверяем, что данные состояния корректны
+    if 'subject' not in data or 'semester' not in data:
+        await reply_with_menu(callback, "Ошибка: отсутствуют данные фильтрации", delete_current=True)
+        await state.clear()
+        return
+    
+    # Получаем отфильтрованные шпаргалки
     cheatsheets = db.get_cheatsheets(
-        subject=data.get("subject"),
-        semester=data.get("semester"),
-        type_=type_,
+        subject=data["subject"],  # Обязательный параметр
+        semester=data["semester"],  # Обязательный параметр
+        type_=type_,  # Обязательный параметр
         user_id=callback.from_user.id
     )
     
