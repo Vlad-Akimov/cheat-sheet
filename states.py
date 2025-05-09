@@ -23,6 +23,11 @@ class BalanceRequestStates(StatesGroup):
     waiting_for_amount = State()
     waiting_for_proof = State()
 
+class MyCheatsheetsStates(StatesGroup):
+    waiting_for_subject = State()
+    waiting_for_semester = State()
+    waiting_for_type = State()
+
 class IsAdmin(Filter):
     async def __call__(self, message: types.Message) -> bool:
         return message.from_user.id == message.bot.get('config').ADMIN_ID

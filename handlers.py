@@ -18,8 +18,13 @@ def register_handlers(dp):
     # Меню
     router.message.register(search_cheatsheets, F.text == texts.SEARCH_CHEATSHEET)
     router.message.register(add_cheatsheet, F.text == texts.ADD_CHEATSHEET)
-    router.message.register(show_user_cheatsheets, F.text == texts.MY_CHEATSHEETS)
     router.message.register(show_balance, F.text == texts.BALANCE)
+    
+    # Мои шпаргалки
+    router.message.register(show_user_cheatsheets_menu, F.text == texts.MY_CHEATSHEETS)
+    router.callback_query.register(process_my_subject, F.data.startswith("subject_"), MyCheatsheetsStates.waiting_for_subject)
+    router.callback_query.register(process_my_semester, F.data.startswith("semester_"), MyCheatsheetsStates.waiting_for_semester)
+    router.callback_query.register(process_my_type, F.data.startswith("type_"), MyCheatsheetsStates.waiting_for_type)
     
     # Запросы на пополнение баланса
     router.message.register(request_balance, F.text == texts.DEPOSIT)

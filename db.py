@@ -260,14 +260,30 @@ class Database:
             "author_id": row[9]
         } for row in results]
     
-    def get_user_cheatsheets(self, user_id: int) -> List[Dict]:
+    def get_user_cheatsheets(self, user_id: int, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
+        """Получает шпаргалки пользователя с возможностью фильтрации"""
         # Получаем шпаргалки, созданные пользователем
-        self.cursor.execute("""
-        SELECT c.id, s.name, c.semester, c.type, c.name, c.price, c.is_approved 
+        query = """
+        SELECT c.id, s.name as subject, c.semester, c.type, c.name, c.price, c.is_approved 
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         WHERE c.author_id = ?
-        """, (user_id,))
+        """
+        
+        params = [user_id]
+        
+        # Добавляем фильтры
+        if subject:
+            query += " AND s.name = ?"
+            params.append(subject)
+        if semester:
+            query += " AND c.semester = ?"
+            params.append(semester)
+        if type_:
+            query += " AND c.type = ?"
+            params.append(type_)
+        
+        self.cursor.execute(query, params)
         created = [{
             "id": row[0],
             "subject": row[1],
@@ -280,7 +296,37 @@ class Database:
         } for row in self.cursor.fetchall()]
         
         # Получаем шпаргалки, купленные пользователем
-        purchased = self.get_purchased_cheatsheets(user_id)
+        query = """
+        SELECT c.id, s.name as subject, c.semester, c.type, c.name, c.price 
+        FROM purchases p
+        JOIN cheatsheets c ON p.cheatsheet_id = c.id
+        JOIN subjects s ON c.subject_id = s.id
+        WHERE p.user_id = ?
+        """
+        
+        params = [user_id]
+        
+        if subject:
+            query += " AND s.name = ?"
+            params.append(subject)
+        if semester:
+            query += " AND c.semester = ?"
+            params.append(semester)
+        if type_:
+            query += " AND c.type = ?"
+            params.append(type_)
+        
+        self.cursor.execute(query, params)
+        purchased = [{
+            "id": row[0],
+            "subject": row[1],
+            "semester": row[2],
+            "type": row[3],
+            "name": row[4],
+            "price": row[5],
+            "is_approved": True,
+            "is_purchased": True
+        } for row in self.cursor.fetchall()]
         
         return created + purchased
     

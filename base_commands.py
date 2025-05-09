@@ -9,7 +9,7 @@ from kb import *
 from db import db
 from admin_commands import notify_admin_about_request
 from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
-from states import SearchCheatsheetStates, AddCheatsheetStates, BalanceRequestStates
+from states import MyCheatsheetsStates, SearchCheatsheetStates, AddCheatsheetStates, BalanceRequestStates
 
 # Создаем роутер
 router = Router()
@@ -47,14 +47,53 @@ async def add_cheatsheet(message: types.Message, state: FSMContext):
     await message.answer(texts.SELECT_SUBJECT, reply_markup=subjects_kb(subjects))
     await state.set_state(AddCheatsheetStates.waiting_for_subject)
 
-async def show_user_cheatsheets(message: types.Message):
-    cheatsheets = db.get_user_cheatsheets(message.from_user.id)
-    if not cheatsheets:
-        await reply_with_menu(message, "У вас пока нет шпаргалок.")
+async def show_user_cheatsheets_menu(message: types.Message, state: FSMContext):
+    """Показывает меню фильтрации для моих шпаргалок"""
+    await delete_previous_messages(message)
+    subjects = db.get_subjects()
+    if not subjects:
+        await message.answer("Пока нет доступных предметов.")
+        return
+    await message.answer("Выберите предмет для фильтрации:", reply_markup=subjects_kb(subjects))
+    await state.set_state(MyCheatsheetsStates.waiting_for_subject)
+
+async def process_my_subject(callback: types.CallbackQuery, state: FSMContext):
+    subject = callback.data.split("_")[1]
+    await state.update_data(subject=subject)
+    await callback.message.edit_text("Выберите семестр:", reply_markup=semesters_kb())
+    await state.set_state(MyCheatsheetsStates.waiting_for_semester)
+
+async def process_my_semester(callback: types.CallbackQuery, state: FSMContext):
+    semester = int(callback.data.split("_")[1])
+    await state.update_data(semester=semester)
+    await callback.message.edit_text("Выберите тип:", reply_markup=types_kb())
+    await state.set_state(MyCheatsheetsStates.waiting_for_type)
+
+async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
+    type_ = callback.data.split("_")[1]
+    data = await state.get_data()
+    
+    # Получаем отфильтрованные шпаргалки пользователя
+    cheatsheets = db.get_user_cheatsheets(callback.from_user.id)
+    
+    # Применяем фильтры
+    filtered = []
+    for cs in cheatsheets:
+        if data.get('subject') and cs['subject'] != data['subject']:
+            continue
+        if data.get('semester') and cs['semester'] != data['semester']:
+            continue
+        if data.get('type') and cs['type'] != type_:
+            continue
+        filtered.append(cs)
+    
+    if not filtered:
+        await reply_with_menu(callback, "По вашему запросу ничего не найдено.", delete_current=True)
+        await state.clear()
         return
     
-    text = "📚 Ваши шпаргалки:\n\n"
-    for cs in cheatsheets:
+    text = "📚 Найденные шпаргалки:\n\n"
+    for cs in filtered:
         if cs.get("is_purchased", False):
             status = "🛒 Куплена"
         elif cs["is_approved"]:
@@ -64,7 +103,8 @@ async def show_user_cheatsheets(message: types.Message):
             
         text += f"📌 {cs['name']}\n{cs['subject']}, {cs['semester']} семестр, {cs['type']} - {cs['price']} руб. ({status})\n\n"
     
-    await reply_with_menu(message, text)
+    await reply_with_menu(callback, text, delete_current=True)
+    await state.clear()
 
 async def show_balance(message: types.Message):
     balance = db.get_user_balance(message.from_user.id)
