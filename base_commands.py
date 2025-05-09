@@ -471,15 +471,6 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
         print(f"Неожиданная ошибка в buy_cheatsheet: {e}")
 
 
-async def deposit_balance(message: types.Message):
-    await reply_with_menu(
-        message,
-        "Для пополнения баланса:\n\n"
-        "1. Переведите средства на наш счет\n"
-        "2. Отправьте скриншот перевода администратору @Vld251\n"
-        "3. После проверки ваш баланс будет пополнен"
-    )
-
 # Пользователь запрашивает пополнение
 async def request_balance(message: types.Message, state: FSMContext):
     await message.answer(
