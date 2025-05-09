@@ -30,13 +30,17 @@ def register_handlers(dp):
     router.message.register(request_balance, F.text == texts.DEPOSIT)
     router.message.register(process_balance_amount, BalanceRequestStates.waiting_for_amount)
     router.message.register(process_balance_proof, 
-                          BalanceRequestStates.waiting_for_proof,
-                          F.content_type.in_({'photo', 'document', 'text'}))
+                            BalanceRequestStates.waiting_for_proof,
+                            F.content_type.in_({'photo', 'document', 'text'}))
     
     # Поиск шпаргалок
     router.callback_query.register(process_subject, F.data.startswith("subject_"), SearchCheatsheetStates.waiting_for_subject)
     router.callback_query.register(process_semester, F.data.startswith("semester_"), SearchCheatsheetStates.waiting_for_semester)
     router.callback_query.register(process_type, F.data.startswith("type_"), SearchCheatsheetStates.waiting_for_type)
+    
+    router.callback_query.register(back_to_menu, F.data == "back_to_menu")
+    router.callback_query.register(back_to_subject, F.data == "back_to_subject")
+    router.callback_query.register(back_to_semester, F.data == "back_to_semester")
     
     # Добавление шпаргалок
     router.callback_query.register(process_add_subject, F.data.startswith("subject_"), AddCheatsheetStates.waiting_for_subject)

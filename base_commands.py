@@ -122,23 +122,24 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
     data = await state.get_data()
     
-    # Проверяем, что данные состояния корректны
-    if 'subject' not in data or 'semester' not in data:
-        await reply_with_menu(callback, "Ошибка: отсутствуют данные фильтрации", delete_current=True)
-        await state.clear()
-        return
-    
     # Получаем отфильтрованные шпаргалки
     cheatsheets = db.get_cheatsheets(
-        subject=data["subject"],  # Обязательный параметр
-        semester=data["semester"],  # Обязательный параметр
-        type_=type_,  # Обязательный параметр
+        subject=data.get("subject"),
+        semester=data.get("semester"),
+        type_=type_,
         user_id=callback.from_user.id
     )
     
     if not cheatsheets:
-        await reply_with_menu(callback, texts.NO_CHEATSHEETS, delete_current=True)
-        await state.clear()
+        builder = InlineKeyboardBuilder()
+        builder.button(text=texts.BACK_BUTTON, callback_data="back_to_semester")
+        builder.button(text=texts.CANCEL_SEARCH, callback_data="back_to_menu")
+        builder.adjust(2)
+        
+        await callback.message.edit_text(
+            texts.NO_CHEATSHEETS,
+            reply_markup=builder.as_markup()
+        )
         return
     
     for cheatsheet in cheatsheets:
@@ -577,3 +578,27 @@ async def process_balance_request(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"Ошибка: {e}")
         await state.clear()
+
+# Обработчик кнопки "Назад" в главное меню
+async def back_to_menu(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await reply_with_menu(callback, "Поиск отменён.", delete_current=True)
+
+# Обработчик кнопки "Назад" к выбору предмета
+async def back_to_subject(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(SearchCheatsheetStates.waiting_for_subject)
+    subjects = db.get_subjects()
+    await callback.message.edit_text(
+        texts.SELECT_SUBJECT,
+        reply_markup=subjects_kb(subjects)
+    )
+    await callback.answer()
+
+# Обработчик кнопки "Назад" к выбору семестра
+async def back_to_semester(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(SearchCheatsheetStates.waiting_for_semester)
+    await callback.message.edit_text(
+        texts.SELECT_SEMESTER,
+        reply_markup=semesters_kb()
+    )
+    await callback.answer()

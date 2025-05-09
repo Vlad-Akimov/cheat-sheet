@@ -1,4 +1,4 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from text import texts
@@ -14,6 +14,11 @@ def main_menu():
         resize_keyboard=True
     )
 
+def back_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=texts.BACK_BUTTON, callback_data="back_to_menu")
+    return builder.as_markup()
+
 # Клавиатура для выбора предмета
 def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -23,19 +28,38 @@ def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 # Клавиатура для выбора семестра
+def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    
+    # Добавляем предметы в сетку 2x2
+    for subject in subjects:
+        builder.button(text=subject, callback_data=f"subject_{subject}")
+    builder.adjust(2)  # 2 кнопки в ряду для предметов
+    
+    # Добавляем кнопку отмены отдельным рядом
+    builder.row(InlineKeyboardButton(
+        text=texts.CANCEL_SEARCH,
+        callback_data="back_to_menu"
+    ))
+    
+    return builder.as_markup()
+
 def semesters_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for i in range(1, 9):
         builder.button(text=str(i), callback_data=f"semester_{i}")
-    builder.adjust(4)  # 4 кнопки в ряду
+    builder.button(text=texts.BACK_BUTTON, callback_data="back_to_subject")
+    builder.button(text=texts.CANCEL_SEARCH, callback_data="back_to_menu")
+    builder.adjust(4, 4, 2)  # 4 кнопки в первых двух рядах, затем кнопки "Назад" и "Отмена"
     return builder.as_markup()
 
-# Клавиатура для выбора типа шпаргалки
 def types_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="Формулы", callback_data="type_formulas")
     builder.button(text="Теория", callback_data="type_theory")
-    builder.adjust(2)  # 2 кнопки в ряду
+    builder.button(text=texts.BACK_BUTTON, callback_data="back_to_semester")
+    builder.button(text=texts.CANCEL_SEARCH, callback_data="back_to_menu")
+    builder.adjust(2, 2)  # 2 кнопки в ряду
     return builder.as_markup()
 
 # Кнопка отмены
