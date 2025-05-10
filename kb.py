@@ -70,10 +70,30 @@ def cancel_kb() -> InlineKeyboardMarkup:
 
 # Кнопки модерации для админа
 def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
+    print(cheatsheet_id)
     builder = InlineKeyboardBuilder()
-    builder.button(text=texts.APPROVE_BUTTON, callback_data=f"approve_{cheatsheet_id}")
-    builder.button(text=texts.REJECT_BUTTON, callback_data=f"reject_{cheatsheet_id}")
-    builder.adjust(2)  # 2 кнопки в ряду
+    builder.button(
+        text="✏️ Изменить название", 
+        callback_data=f"edit_name:{cheatsheet_id}"
+    )
+    builder.button(
+        text=texts.APPROVE_BUTTON, 
+        callback_data=f"approve:{cheatsheet_id}"
+    )
+    builder.button(
+        text=texts.REJECT_BUTTON, 
+        callback_data=f"reject:{cheatsheet_id}"
+    )
+    builder.adjust(1, 2)
+    return builder.as_markup()
+
+def admin_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
+    print(cheatsheet_id)
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="⬅️ Назад к редактированию", 
+        callback_data=f"back_edit:{cheatsheet_id}"
+    )
     return builder.as_markup()
 
 # Создадим клавиатуру для админа
@@ -84,6 +104,32 @@ def admin_balance_kb():
         ],
         resize_keyboard=True
     )
+
+def admin_edit_name_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="✏️ Изменить название", 
+        callback_data=f"edit_{cheatsheet_id}"
+    )
+    builder.button(
+        text=texts.APPROVE_BUTTON, 
+        callback_data=f"approve_{cheatsheet_id}"
+    )
+    builder.button(
+        text=texts.REJECT_BUTTON, 
+        callback_data=f"reject_{cheatsheet_id}"
+    )
+    builder.adjust(1, 2)
+    return builder.as_markup()
+
+def admin_edit_name_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой 'Назад' при изменении названия"""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="⬅️ Назад к редактированию", 
+        callback_data=f"back_to_edit_{cheatsheet_id}"
+    )
+    return builder.as_markup()
 
 # Кнопка покупки
 def buy_kb(cheatsheet_id: int, price: float) -> InlineKeyboardMarkup:
