@@ -95,7 +95,7 @@ async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
         else:
             status = "⏳ На модерации"
             
-        text += f"📌 {cs['name']}\n{cs['subject']}, {cs['semester']} семестр, {cs['type']} - {cs['price']} руб. ({status})\n\n"
+        text += f"📌 {cs['name']}\n{cs['subject']}, {cs['semester']} семестр, {'Формула' if cs['type'] == 'formulas' else 'Теория'} - {cs['price']} руб. ({status})\n\n"
     
     await reply_with_menu(callback, text, delete_current=True)
     await state.clear()
@@ -122,7 +122,6 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
     data = await state.get_data()
     
-    # Получаем отфильтрованные шпаргалки
     cheatsheets = db.get_cheatsheets(
         subject=data.get("subject"),
         semester=data.get("semester"),
@@ -143,16 +142,23 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
         return
     
     for cheatsheet in cheatsheets:
-        # Проверяем наличие всех необходимых полей
-        if not all(key in cheatsheet for key in ['subject', 'semester', 'type', 'name', 'author', 'price', 'file_id', 'file_type', 'author_id']):
-            print(f"Неполные данные шпаргалки: {cheatsheet}")
-            continue
-            
-        # Если шпаргалка принадлежит пользователю или куплена - делаем бесплатной
+        # Форматируем дату публикации
+        pub_date = cheatsheet.get("approved_at", cheatsheet.get("created_at", "неизвестно"))
+        
+        text = texts.CHEATSHEET_INFO.format(
+            name=cheatsheet["name"],
+            subject=cheatsheet["subject"],
+            semester=cheatsheet["semester"],
+            type='Формула' if cheatsheet['type'] == 'formulas' else 'Теория',
+            author=cheatsheet["author"],
+            price=cheatsheet["price"],
+            approved_at=pub_date
+        )
+        
+        # Остальной код остается без изменений
         if cheatsheet["author_id"] == callback.from_user.id:
             markup = free_kb(cheatsheet["file_id"])
         else:
-            # Проверяем, куплена ли шпаргалка
             db.cursor.execute("SELECT 1 FROM purchases WHERE user_id = ? AND cheatsheet_id = ?", 
                             (callback.from_user.id, cheatsheet["id"]))
             if db.cursor.fetchone():
@@ -162,15 +168,6 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
                     markup = buy_kb(cheatsheet["id"], cheatsheet["price"])
                 else:
                     markup = free_kb(cheatsheet["file_id"])
-        
-        text = texts.CHEATSHEET_INFO.format(
-            name=cheatsheet["name"],
-            subject=cheatsheet["subject"],
-            semester=cheatsheet["semester"],
-            type=cheatsheet["type"],
-            author=cheatsheet["author"],
-            price=cheatsheet["price"]
-        )
         
         await callback.message.answer(text, reply_markup=markup)
     
@@ -270,7 +267,7 @@ async def process_price(message: types.Message, state: FSMContext):
             name=data["name"],
             subject=data["subject"],
             semester=data["semester"],
-            type=data["type"],
+            type='Формула' if data["type"] == 'formulas' else 'Теория',
             price=f"{final_price} (исходная цена: {price} ₽, наценка: {config.ADMIN_PERCENT}%)",
             author=f"{user.username} (ID: {user.id})"
         )

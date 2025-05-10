@@ -48,6 +48,8 @@ class Database:
             price REAL,
             author_id INTEGER,
             is_approved INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            approved_at TIMESTAMP,
             FOREIGN KEY (subject_id) REFERENCES subjects(id),
             FOREIGN KEY (author_id) REFERENCES users(id)
         )
@@ -98,24 +100,15 @@ class Database:
     def _migrate_db(self):
         """Добавляем отсутствующие колонки в существующие таблицы"""
         try:
-            # Проверяем наличие новых колонок в таблице users
-            self.cursor.execute("PRAGMA table_info(users)")
-            columns = [column[1] for column in self.cursor.fetchall()]
-            
-            # Добавляем новые колонки, если их нет
-            if 'first_name' not in columns:
-                self.cursor.execute("ALTER TABLE users ADD COLUMN first_name TEXT")
-            if 'last_name' not in columns:
-                self.cursor.execute("ALTER TABLE users ADD COLUMN last_name TEXT")
-            if 'full_name' not in columns:
-                self.cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
-            
-            # Проверяем наличие колонки name в таблице cheatsheets
+            # Проверяем наличие новых колонок в таблице cheatsheets
             self.cursor.execute("PRAGMA table_info(cheatsheets)")
             columns = [column[1] for column in self.cursor.fetchall()]
             
-            if 'name' not in columns:
-                self.cursor.execute("ALTER TABLE cheatsheets ADD COLUMN name TEXT")
+            # Добавляем новые колонки, если их нет
+            if 'created_at' not in columns:
+                self.cursor.execute("ALTER TABLE cheatsheets ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            if 'approved_at' not in columns:
+                self.cursor.execute("ALTER TABLE cheatsheets ADD COLUMN approved_at TIMESTAMP")
             
             self.conn.commit()
             print("Миграции базы данных успешно применены")
@@ -199,7 +192,9 @@ class Database:
         self.cursor.execute("""
         SELECT c.id, s.name as subject, c.semester, c.type, c.name, 
             c.file_id, c.file_type, c.price, c.author_id,
-            COALESCE(u.username, 'Неизвестный автор') as author
+            COALESCE(u.username, 'Неизвестный автор') as author,
+            datetime(c.created_at, 'localtime') as created_at,
+            datetime(c.approved_at, 'localtime') as approved_at
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         LEFT JOIN users u ON c.author_id = u.id
@@ -220,13 +215,17 @@ class Database:
             "file_type": result[6],
             "price": result[7],
             "author_id": result[8],
-            "author": result[9]
+            "author": result[9],
+            "created_at": result[10],
+            "approved_at": result[11]
         }
     
     def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None, user_id: int = None) -> List[Dict]:
         query = """
         SELECT c.id, s.name as subject, c.semester, c.type, c.name, c.file_id, c.file_type, c.price, 
-            COALESCE(u.username, 'Неизвестный автор') as author, c.author_id
+            COALESCE(u.username, 'Неизвестный автор') as author, c.author_id,
+            datetime(c.created_at, 'localtime') as created_at,
+            datetime(c.approved_at, 'localtime') as approved_at
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         LEFT JOIN users u ON c.author_id = u.id
@@ -235,7 +234,6 @@ class Database:
         
         params = [user_id if user_id else 0]
         
-        # Добавляем фильтры только если они переданы
         if subject is not None:
             query += " AND s.name = ?"
             params.append(subject)
@@ -246,8 +244,7 @@ class Database:
             query += " AND c.type = ?"
             params.append(type_)
         
-        # Добавляем сортировку для стабильности результатов
-        query += " ORDER BY c.id"
+        query += " ORDER BY c.approved_at DESC"
         
         self.cursor.execute(query, params)
         results = self.cursor.fetchall()
@@ -262,7 +259,9 @@ class Database:
             "file_type": row[6],
             "price": row[7],
             "author": row[8],
-            "author_id": row[9]
+            "author_id": row[9],
+            "created_at": row[10],
+            "approved_at": row[11]
         } for row in results]
     
     def get_user_cheatsheets(self, user_id: int, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
@@ -338,7 +337,10 @@ class Database:
     def approve_cheatsheet(self, cheatsheet_id: int):
         """Одобряет шпаргалку"""
         try:
-            self.cursor.execute("UPDATE cheatsheets SET is_approved = 1 WHERE id = ?", (cheatsheet_id,))
+            self.cursor.execute(
+                "UPDATE cheatsheets SET is_approved = 1, approved_at = CURRENT_TIMESTAMP WHERE id = ?", 
+                (cheatsheet_id,)
+            )
             self.conn.commit()
             return True
         except Exception as e:

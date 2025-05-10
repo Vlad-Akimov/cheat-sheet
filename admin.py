@@ -8,13 +8,27 @@ from text import texts
 async def approve_cheatsheet(callback: CallbackQuery):
     cheatsheet_id = int(callback.data.split("_")[1])
     db.approve_cheatsheet(cheatsheet_id)
-    await callback.message.edit_text(texts.CHEATSHEET_APPROVED)
+    
+    # Получаем дату одобрения
+    db.cursor.execute("SELECT datetime(approved_at, 'localtime') FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
+    approved_at = db.cursor.fetchone()[0]
+    
+    await callback.message.edit_text(
+        f"{texts.CHEATSHEET_APPROVED}\n\nДата публикации: {approved_at} (МСК)"
+    )
     await callback.answer()
 
 async def reject_cheatsheet(callback: CallbackQuery):
     cheatsheet_id = int(callback.data.split("_")[1])
     db.reject_cheatsheet(cheatsheet_id)
-    await callback.message.edit_text(texts.CHEATSHEET_REJECTED)
+    
+    # Получаем дату отклонения (текущее время)
+    db.cursor.execute("SELECT datetime('now', 'localtime')")
+    rejected_at = db.cursor.fetchone()[0]
+    
+    await callback.message.edit_text(
+        f"{texts.CHEATSHEET_REJECTED}\n\nДата отклонения: {rejected_at} (МСК)"
+    )
     await callback.answer()
 
 async def view_all_cheatsheets(message: types.Message):
