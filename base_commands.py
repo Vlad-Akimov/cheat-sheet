@@ -54,7 +54,7 @@ async def show_user_cheatsheets_menu(message: types.Message, state: FSMContext):
     if not subjects:
         await message.answer("Пока нет доступных предметов.")
         return
-    await message.answer("Выберите предмет для фильтрации:", reply_markup=subjects_kb(subjects))
+    await message.answer(texts.FILTER_BY_SUBJECT, reply_markup=subjects_kb(subjects))
     await state.set_state(MyCheatsheetsStates.waiting_for_subject)
 
 async def process_my_subject(callback: types.CallbackQuery, state: FSMContext):
@@ -82,7 +82,7 @@ async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
     )
     
     if not cheatsheets:
-        await reply_with_menu(callback, "По вашему запросу ничего не найдено.", delete_current=True)
+        await reply_with_menu(callback, texts.NO_CHEATSHEETS, delete_current=True)
         await state.clear()
         return
     

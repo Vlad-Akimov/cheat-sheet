@@ -57,7 +57,7 @@ async def admin_add_balance(message: types.Message, state: FSMContext):
         return
     
     await message.answer(
-        "Введите ID пользователя для пополнения баланса:",
+        texts.SELECT_USER_ID,
         reply_markup=admin_balance_kb()
     )
     await state.set_state(AddBalanceStates.waiting_for_user_id)
@@ -66,7 +66,7 @@ async def admin_add_balance(message: types.Message, state: FSMContext):
 # Получение ID пользователя
 async def process_user_id(message: types.Message, state: FSMContext):
     if message.text.lower() == "отмена":
-        await message.answer("Действие отменено", reply_markup=main_menu())
+        await message.answer(texts.ACTION_CANCELLED, reply_markup=main_menu())
         await state.clear()
         return
     
@@ -79,7 +79,7 @@ async def process_user_id(message: types.Message, state: FSMContext):
         )
         await state.set_state(AddBalanceStates.waiting_for_amount)
     except ValueError:
-        await message.answer("Неверный формат ID. Введите число:")
+        await message.answer(texts.INVALID_USER_ID_FORMAT)
 
 
 # Админ обрабатывает запрос
@@ -178,14 +178,14 @@ async def handle_balance_request(callback: types.CallbackQuery):
 # Получение суммы и пополнение баланса
 async def process_amount(message: types.Message, state: FSMContext):
     if message.text.lower() == "отмена":
-        await message.answer("Действие отменено", reply_markup=main_menu())
+        await message.answer(texts.ACTION_CANCELLED, reply_markup=main_menu())
         await state.clear()
         return
     
     try:
         amount = float(message.text)
         if amount <= 0:
-            await message.answer("Сумма должна быть больше 0")
+            await message.answer(texts.AMOUNT_MUST_BE_POSITIVE)
             return
             
         data = await state.get_data()
@@ -216,4 +216,4 @@ async def process_amount(message: types.Message, state: FSMContext):
         await state.clear()
         
     except ValueError:
-        await message.answer("Неверный формат суммы. Введите число:")
+        await message.answer(texts.INVALID_AMOUNT_FORMAT)

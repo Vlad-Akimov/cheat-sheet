@@ -80,7 +80,7 @@ def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
 def admin_balance_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Отмена")],
+            [KeyboardButton(text=texts.CANCEL_BUTTON)],
         ],
         resize_keyboard=True
     )
