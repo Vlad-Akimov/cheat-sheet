@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Инициализация бота
 bot = Bot(
     token=config.BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)  # Указываем parse_mode здесь
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)

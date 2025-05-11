@@ -22,9 +22,13 @@ def register_handlers(dp):
     
     # Мои шпаргалки
     router.message.register(show_user_cheatsheets_menu, F.text == texts.MY_CHEATSHEETS)
-    router.callback_query.register(process_my_subject, F.data.startswith("subject_"), MyCheatsheetsStates.waiting_for_subject)
-    router.callback_query.register(process_my_semester, F.data.startswith("semester_"), MyCheatsheetsStates.waiting_for_semester)
-    router.callback_query.register(process_my_type, F.data.startswith("type_"), MyCheatsheetsStates.waiting_for_type)
+    router.callback_query.register(process_my_subject, F.data.startswith("my_subject_"), MyCheatsheetsStates.waiting_for_subject)
+    router.callback_query.register(process_my_semester, F.data.startswith("my_semester_"), MyCheatsheetsStates.waiting_for_semester)
+    router.callback_query.register(process_my_type, F.data.startswith("my_type_"), MyCheatsheetsStates.waiting_for_type)
+    
+    # Обработчики кнопок "Назад" для "Моих шпаргалок"
+    router.callback_query.register(my_back_to_subject, F.data == "my_back_to_subject")
+    router.callback_query.register(my_back_to_semester, F.data == "my_back_to_semester")
     
     # Запросы на пополнение баланса
     router.message.register(request_balance, F.text == texts.DEPOSIT)

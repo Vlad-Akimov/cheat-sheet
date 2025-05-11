@@ -54,26 +54,36 @@ async def show_user_cheatsheets_menu(message: types.Message, state: FSMContext):
     if not subjects:
         await message.answer("Пока нет доступных предметов.")
         return
-    await message.answer(texts.FILTER_BY_SUBJECT, reply_markup=subjects_kb(subjects))
+    
+    builder = InlineKeyboardBuilder()
+    for subject in subjects:
+        builder.button(text=subject, callback_data=f"my_subject_{subject}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(
+        text=texts.CANCEL_SEARCH,
+        callback_data="back_to_menu"
+    ))
+    
+    await message.answer(texts.FILTER_BY_SUBJECT, reply_markup=builder.as_markup())
     await state.set_state(MyCheatsheetsStates.waiting_for_subject)
 
 async def process_my_subject(callback: types.CallbackQuery, state: FSMContext):
-    subject = callback.data.split("_")[1]
+    subject = callback.data.split("_")[2]  # my_subject_Математика → Математика
     await state.update_data(subject=subject)
-    await callback.message.edit_text("Выберите семестр:", reply_markup=semesters_kb())
+    await callback.message.edit_text("Выберите семестр:", reply_markup=semesters_kb_for_my_cheatsheets())
     await state.set_state(MyCheatsheetsStates.waiting_for_semester)
 
 async def process_my_semester(callback: types.CallbackQuery, state: FSMContext):
-    semester = int(callback.data.split("_")[1])
+    semester = int(callback.data.split("_")[2])  # my_semester_1 → 1
     await state.update_data(semester=semester)
-    await callback.message.edit_text("Выберите тип:", reply_markup=types_kb())
+    await callback.message.edit_text("Выберите тип:", reply_markup=types_kb_for_my_cheatsheets())
     await state.set_state(MyCheatsheetsStates.waiting_for_type)
 
 async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
-    type_ = callback.data.split("_")[1]
+    type_ = callback.data.split("_")[2]  # my_type_formulas → formulas
+    await state.update_data(type=type_)
     data = await state.get_data()
     
-    # Получаем отфильтрованные шпаргалки пользователя с применением всех фильтров
     cheatsheets = db.get_user_cheatsheets(
         callback.from_user.id,
         subject=data.get('subject'),
@@ -86,19 +96,81 @@ async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
         await state.clear()
         return
     
-    text = "📚 Найденные шпаргалки:\n\n"
     for cs in cheatsheets:
-        if cs.get("is_purchased", False):
-            status = "🛒 Куплена"
-        elif cs["is_approved"]:
-            status = "✅ Одобрена"
-        else:
-            status = "⏳ На модерации"
-            
-        text += f"📌 {cs['name']}\n{cs['subject']}, {cs['semester']} семестр, {'Формула' if cs['type'] == 'formulas' else 'Теория'} - {cs['price']} руб. ({status})\n\n"
+        status = "🛒 Куплена" if cs.get("is_purchased", False) else ("✅ Одобрена" if cs["is_approved"] else "⏳ На модерации")
+        text = (
+            f"📌 {cs['name']}\n"
+            f"📚 {cs['subject']}, {cs['semester']} семестр\n"
+            f"📝 {'Формула' if cs['type'] == 'formulas' else 'Теория'}\n"
+            f"💰 {cs['price']} руб. | {status}"
+        )
+        await callback.message.answer(text, reply_markup=my_cheatsheet_kb(cs))
     
-    await reply_with_menu(callback, text, delete_current=True)
+    await callback.answer()
     await state.clear()
+
+async def my_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
+    """Назад к выбору предмета в 'Мои шпаргалки'"""
+    await state.set_state(MyCheatsheetsStates.waiting_for_subject)
+    subjects = db.get_subjects()
+    
+    builder = InlineKeyboardBuilder()
+    for subject in subjects:
+        builder.button(text=subject, callback_data=f"my_subject_{subject}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(
+        text=texts.CANCEL_SEARCH,
+        callback_data="back_to_menu"
+    ))
+    
+    await callback.message.edit_text(
+        texts.FILTER_BY_SUBJECT,
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+async def my_back_to_semester(callback: types.CallbackQuery, state: FSMContext):
+    """Назад к выбору семестра в 'Мои шпаргалки'"""
+    await state.set_state(MyCheatsheetsStates.waiting_for_semester)
+    await callback.message.edit_text(
+        "Выберите семестр:",
+        reply_markup=semesters_kb_for_my_cheatsheets()
+    )
+    await callback.answer()
+
+async def open_my_cheatsheet(callback: types.CallbackQuery):
+    try:
+        cheatsheet_id = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+        
+        # Получаем шпаргалку с проверкой прав доступа
+        cheatsheet = db.get_cheatsheet(cheatsheet_id, user_id)
+        
+        if not cheatsheet:
+            await callback.answer("Шпаргалка не найдена или у вас нет доступа", show_alert=True)
+            return
+        
+        # Отправляем содержимое шпаргалки
+        if cheatsheet["file_type"] == "photo":
+            await callback.message.answer_photo(
+                cheatsheet["file_id"],
+                caption=f"📄 {cheatsheet['name']}"
+            )
+        elif cheatsheet["file_type"] == "document":
+            await callback.message.answer_document(
+                cheatsheet["file_id"],
+                caption=f"📄 {cheatsheet['name']}"
+            )
+        else:
+            await callback.message.answer(
+                f"📄 {cheatsheet['name']}\n\n{cheatsheet['file_id']}"
+            )
+        
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"Error opening cheatsheet: {e}")
+        await callback.answer("Произошла ошибка при открытии шпаргалки", show_alert=True)
 
 async def show_balance(message: types.Message):
     balance = db.get_user_balance(message.from_user.id)
@@ -593,6 +665,7 @@ async def back_to_subject(callback: types.CallbackQuery, state: FSMContext):
 
 # Обработчик кнопки "Назад" к выбору семестра
 async def back_to_semester(callback: types.CallbackQuery, state: FSMContext):
+    """Возврат к выбору семестра"""
     await state.set_state(SearchCheatsheetStates.waiting_for_semester)
     await callback.message.edit_text(
         texts.SELECT_SEMESTER,

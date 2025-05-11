@@ -22,19 +22,10 @@ def back_kb() -> InlineKeyboardMarkup:
 # Клавиатура для выбора предмета
 def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for subject in subjects:
-        builder.button(text=subject, callback_data=f"subject_{subject}")
-    builder.adjust(2)  # 2 кнопки в ряду
-    return builder.as_markup()
-
-# Клавиатура для выбора семестра
-def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
     
-    # Добавляем предметы в сетку 2x2
     for subject in subjects:
         builder.button(text=subject, callback_data=f"subject_{subject}")
-    builder.adjust(2)  # 2 кнопки в ряду для предметов
+    builder.adjust(2)
     
     # Добавляем кнопку отмены отдельным рядом
     builder.row(InlineKeyboardButton(
@@ -44,6 +35,7 @@ def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
     
     return builder.as_markup()
 
+# Клавиатура для выбора семестра
 def semesters_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for i in range(1, 9):
@@ -147,4 +139,35 @@ def free_kb(file_id: str) -> InlineKeyboardMarkup:
         text=texts.FREE_ACCESS,
         callback_data=f"free_{file_id}"
     )
+    return builder.as_markup()
+
+def my_cheatsheet_kb(cheatsheet: dict) -> InlineKeyboardMarkup:
+    """Клавиатура для шпаргалки в разделе 'Мои шпаргалки'"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.button(
+        text="📄 Открыть", 
+        callback_data=f"open_{cheatsheet['id']}"
+    )
+    
+    return builder.as_markup()
+
+def types_kb_for_my_cheatsheets() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора типа в разделе 'Мои шпаргалки'"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Формулы", callback_data="my_type_formulas")
+    builder.button(text="Теория", callback_data="my_type_theory")
+    builder.button(text=texts.BACK_BUTTON, callback_data="my_back_to_semester")
+    builder.button(text=texts.CANCEL_SEARCH, callback_data="back_to_menu")
+    builder.adjust(2, 2)
+    return builder.as_markup()
+
+def semesters_kb_for_my_cheatsheets() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора семестра в разделе 'Мои шпаргалки'"""
+    builder = InlineKeyboardBuilder()
+    for i in range(1, 9):
+        builder.button(text=str(i), callback_data=f"my_semester_{i}")
+    builder.button(text=texts.BACK_BUTTON, callback_data="my_back_to_subject")
+    builder.button(text=texts.CANCEL_SEARCH, callback_data="back_to_menu")
+    builder.adjust(4, 4, 2)
     return builder.as_markup()
