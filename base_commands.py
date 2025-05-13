@@ -746,8 +746,7 @@ async def process_withdraw_details(message: types.Message, state: FSMContext):
     await state.clear()
 
 async def handle_back_button(message: types.Message, state: FSMContext):
-    await state.clear()  # Очищаем состояние
-    await reply_with_menu(message, "Возвращаемся в главное меню")
+    await state.clear()
 
 async def notify_admin_about_withdraw(bot: Bot, request_id: int, user: types.User, amount: float, details: str):
     text = texts.WITHDRAW_REQUEST.format(
