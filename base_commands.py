@@ -772,7 +772,6 @@ async def notify_admin_about_withdraw(bot: Bot, request_id: int, user: types.Use
     except Exception as e:
         print(f"Ошибка уведомления админа: {e}")
 
-# Добавьте обработчик для кнопки вывода
 async def handle_withdraw_request(callback: types.CallbackQuery):
     try:
         parts = callback.data.split('_')
