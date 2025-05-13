@@ -37,6 +37,13 @@ def register_handlers(dp):
                             BalanceRequestStates.waiting_for_proof,
                             F.content_type.in_({'photo', 'document', 'text'}))
     
+    router.message.register(start_withdraw, F.text == texts.WITHDRAW)
+    router.message.register(process_withdraw_amount, WithdrawStates.waiting_for_amount)
+    router.message.register(process_withdraw_details, WithdrawStates.waiting_for_details)
+    router.callback_query.register(handle_withdraw_request, F.data.startswith("withdraw_approve_"))
+    router.callback_query.register(handle_withdraw_request, F.data.startswith("withdraw_reject_"))
+    router.message.register(handle_back_button, F.text == texts.BACK_BUTTON)
+    
     # Поиск шпаргалок
     router.callback_query.register(process_subject, F.data.startswith("subject_"), SearchCheatsheetStates.waiting_for_subject)
     router.callback_query.register(process_semester, F.data.startswith("semester_"), SearchCheatsheetStates.waiting_for_semester)

@@ -14,6 +14,15 @@ def main_menu():
         resize_keyboard=True
     )
 
+def withdraw_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=texts.WITHDRAW)],
+            [KeyboardButton(text=texts.BACK_BUTTON)]
+        ],
+        resize_keyboard=True
+    )
+
 def back_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=texts.BACK_BUTTON, callback_data="back_to_menu")

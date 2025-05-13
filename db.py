@@ -85,7 +85,23 @@ class Database:
             FOREIGN KEY (admin_id) REFERENCES users(id)
         )
         """)
-            
+        
+        # Таблица запросов на вывод средств
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS withdraw_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            details TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            admin_id INTEGER,
+            processed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (admin_id) REFERENCES users(id)
+        )
+        """)
+        
         self.conn.commit()
     
     def close(self):
@@ -368,7 +384,7 @@ class Database:
             return False
     
     def add_balance_request(self, user_id: int, amount: float, proof_text: str = None, 
-                          file_id: str = None, file_type: str = None) -> int:
+                            file_id: str = None, file_type: str = None) -> int:
         """Добавляет запрос на пополнение с проверкой"""
         try:
             self.cursor.execute(
@@ -428,5 +444,47 @@ class Database:
             "is_approved": True,
             "is_purchased": True
         } for row in self.cursor.fetchall()]
+    
+    def add_withdraw_request(self, user_id: int, amount: float, details: str) -> int:
+        """Добавляет запрос на вывод средств"""
+        try:
+            self.cursor.execute(
+                """INSERT INTO withdraw_requests 
+                (user_id, amount, details) 
+                VALUES (?, ?, ?)""",
+                (user_id, amount, details)
+            )
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except Exception as e:
+            print(f"Ошибка добавления запроса на вывод: {e}")
+            return None
+
+    def get_pending_withdraw_requests(self) -> List[Dict]:
+        """Получает все ожидающие запросы на вывод"""
+        self.cursor.execute("""
+        SELECT wr.*, u.username 
+        FROM withdraw_requests wr
+        JOIN users u ON wr.user_id = u.id
+        WHERE wr.status = 'pending'
+        ORDER BY wr.created_at
+        """)
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def update_withdraw_status(self, request_id: int, status: str, admin_id: int) -> bool:
+        """Обновляет статус запроса на вывод"""
+        try:
+            self.cursor.execute(
+                """UPDATE withdraw_requests 
+                SET status = ?, admin_id = ?, processed_at = CURRENT_TIMESTAMP 
+                WHERE id = ?""",
+                (status, admin_id, request_id)
+            )
+            self.conn.commit()
+            return self.cursor.rowcount > 0
+        except Exception as e:
+            print(f"Ошибка обновления статуса запроса на вывод: {e}")
+            self.conn.rollback()
+            return False
 
 db = Database()

@@ -1,7 +1,9 @@
 import logging
-from aiogram import Router, types
+from aiogram import Bot, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
+
+from datetime import datetime
 
 from config import config
 from text import texts
@@ -9,7 +11,7 @@ from kb import *
 from db import db
 from admin_commands import notify_admin_about_request
 from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
-from states import MyCheatsheetsStates, SearchCheatsheetStates, AddCheatsheetStates, BalanceRequestStates
+from states import MyCheatsheetsStates, SearchCheatsheetStates, AddCheatsheetStates, BalanceRequestStates, WithdrawStates
 
 # Создаем роутер
 router = Router()
@@ -174,7 +176,10 @@ async def open_my_cheatsheet(callback: types.CallbackQuery):
 
 async def show_balance(message: types.Message):
     balance = db.get_user_balance(message.from_user.id)
-    await reply_with_menu(message, f"💰 Ваш баланс: {balance} руб.")
+    await message.answer(
+        f"💰 Ваш баланс: {balance} руб.",
+        reply_markup=withdraw_kb()  # Показываем кнопку вывода после просмотра баланса
+    )
 
 # Поиск шпаргалок ---------------------------------------------
 
@@ -672,3 +677,178 @@ async def back_to_semester(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=semesters_kb()
     )
     await callback.answer()
+
+async def start_withdraw(message: types.Message, state: FSMContext):
+    balance = db.get_user_balance(message.from_user.id)
+    if balance <= 0:
+        await message.answer("На вашем балансе нет средств для вывода.", reply_markup=main_menu())
+        return
+    
+    await message.answer(
+        texts.ENTER_WITHDRAW_AMOUNT,
+        reply_markup=cancel_kb()
+    )
+    await state.set_state(WithdrawStates.waiting_for_amount)
+
+async def process_withdraw_amount(message: types.Message, state: FSMContext):
+    try:
+        amount = float(message.text)
+        balance = db.get_user_balance(message.from_user.id)
+        
+        if amount <= 0 or amount > balance:
+            await message.answer(texts.INVALID_WITHDRAW_AMOUNT)
+            return
+            
+        await state.update_data(amount=amount)
+        await message.answer(
+            texts.ENTER_WITHDRAW_DETAILS,
+            reply_markup=cancel_kb()
+        )
+        await state.set_state(WithdrawStates.waiting_for_details)
+    except ValueError:
+        await message.answer(texts.INVALID_AMOUNT_FORMAT)
+
+async def process_withdraw_details(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    amount = data['amount']
+    details = message.text
+    
+    # Создаем запрос на вывод
+    request_id = db.add_withdraw_request(
+        user_id=message.from_user.id,
+        amount=amount,
+        details=details
+    )
+    
+    if not request_id:
+        await message.answer(texts.ERROR, reply_markup=main_menu())
+        await state.clear()
+        return
+    
+    # Уведомляем пользователя
+    await message.answer(
+        texts.WITHDRAW_REQUEST_SENT.format(
+            amount=amount,
+            admin_username=config.ADMIN_USERNAME
+        ),
+        reply_markup=main_menu()
+    )
+    
+    # Уведомляем админа
+    await notify_admin_about_withdraw(
+        message.bot, 
+        request_id,
+        message.from_user,
+        amount,
+        details
+    )
+    
+    await state.clear()
+
+async def handle_back_button(message: types.Message, state: FSMContext):
+    await state.clear()  # Очищаем состояние
+    await reply_with_menu(message, "Возвращаемся в главное меню")
+
+async def notify_admin_about_withdraw(bot: Bot, request_id: int, user: types.User, amount: float, details: str):
+    text = texts.WITHDRAW_REQUEST.format(
+        id=request_id,
+        username=user.username,
+        user_id=user.id,
+        amount=amount,
+        details=details,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"withdraw_approve_{request_id}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"withdraw_reject_{request_id}")]
+    ])
+    
+    try:
+        await bot.send_message(
+            chat_id=config.ADMIN_ID,
+            text=text,
+            reply_markup=markup
+        )
+    except Exception as e:
+        print(f"Ошибка уведомления админа: {e}")
+
+# Добавьте обработчик для кнопки вывода
+async def handle_withdraw_request(callback: types.CallbackQuery):
+    try:
+        parts = callback.data.split('_')
+        if len(parts) != 3:
+            await callback.answer("Неверный формат запроса", show_alert=True)
+            return
+
+        action, request_id = parts[1], parts[2]
+        
+        try:
+            request_id = int(request_id)
+        except ValueError:
+            await callback.answer("Неверный ID запроса", show_alert=True)
+            return
+
+        # Получаем данные запроса
+        db.cursor.execute("""
+        SELECT user_id, amount 
+        FROM withdraw_requests 
+        WHERE id = ? AND status = 'pending'
+        """, (request_id,))
+        request = db.cursor.fetchone()
+
+        if not request:
+            await callback.answer("Запрос не найден или уже обработан", show_alert=True)
+            return
+
+        user_id, amount = request
+
+        # Обновляем статус
+        success = db.update_withdraw_status(
+            request_id=request_id,
+            status="approved" if action == "approve" else "rejected",
+            admin_id=callback.from_user.id
+        )
+
+        if not success:
+            await callback.answer("Ошибка обновления статуса", show_alert=True)
+            return
+
+        # Если одобрено - списываем средства
+        if action == "approve":
+            if not db.update_user_balance(user_id, -amount):
+                await callback.answer("Ошибка списания средств", show_alert=True)
+                return
+
+        # Формируем сообщение для пользователя
+        if action == "approve":
+            new_balance = db.get_user_balance(user_id)
+            user_message = (
+                f"✅ Ваш запрос на вывод {amount} руб. одобрен.\n"
+                f"Средства будут переведены на указанные реквизиты в течение 24 часов.\n"
+                f"Текущий баланс: {new_balance} руб."
+            )
+        else:
+            user_message = f"❌ Ваш запрос на вывод {amount} руб. отклонен."
+
+        # Отправляем уведомление пользователю
+        try:
+            await callback.bot.send_message(user_id, user_message)
+        except Exception as e:
+            print(f"Ошибка уведомления пользователя: {e}")
+
+        # Обновляем сообщение админа
+        try:
+            await callback.message.edit_text(
+                f"Запрос на вывод #{request_id} {'одобрен' if action == 'approve' else 'отклонен'}",
+                reply_markup=None
+            )
+        except Exception as e:
+            print(f"Ошибка редактирования сообщения: {e}")
+            await callback.answer(f"Запрос обработан, но не удалось обновить сообщение: {e}")
+
+        await callback.answer()
+
+    except Exception as e:
+        print(f"Ошибка обработки запроса на вывод: {e}")
+        await callback.answer("Произошла ошибка при обработке", show_alert=True)

@@ -31,6 +31,10 @@ class MyCheatsheetsStates(StatesGroup):
 class EditCheatsheetStates(StatesGroup):
     waiting_for_new_name = State()
 
+class WithdrawStates(StatesGroup):
+    waiting_for_amount = State()
+    waiting_for_details = State()
+
 class IsAdmin(Filter):
     async def __call__(self, message: types.Message) -> bool:
         return message.from_user.id == message.bot.get('config').ADMIN_ID

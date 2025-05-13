@@ -244,6 +244,27 @@ def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
         f"👤 Автор: {cheatsheet['author']}"
     )
 
+async def view_withdraw_requests(message: types.Message):
+    if message.from_user.id != config.ADMIN_ID:
+        return
+    
+    requests = db.get_pending_withdraw_requests()
+    
+    if not requests:
+        await message.answer("Нет ожидающих запросов на вывод средств.")
+        return
+    
+    text = "Ожидающие запросы на вывод:\n\n"
+    for req in requests:
+        text += (
+            f"ID: {req['id']}\n"
+            f"Пользователь: @{req['username']} (ID: {req['user_id']})\n"
+            f"Сумма: {req['amount']} руб.\n"
+            f"Реквизиты: {req['details']}\n"
+            f"Дата: {req['created_at']}\n\n"
+        )
+    
+    await message.answer(text)
 
 def register_admin_handlers(router: Router):
     router.callback_query.register(approve_cheatsheet, F.data.startswith("approve:"))
@@ -253,3 +274,4 @@ def register_admin_handlers(router: Router):
     router.message.register(process_new_name, EditCheatsheetStates.waiting_for_new_name)
     router.callback_query.register(back_to_edit_menu, F.data.startswith("back_to_edit_"))
     router.message.register(process_new_name, EditCheatsheetStates.waiting_for_new_name)
+    router.message.register(view_withdraw_requests, Command("withdraws"))
