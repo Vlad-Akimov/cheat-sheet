@@ -181,6 +181,11 @@ async def show_balance(message: types.Message):
         reply_markup=withdraw_kb()  # Показываем кнопку вывода после просмотра баланса
     )
 
+async def handle_balance_back(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Назад' из раздела баланса"""
+    await state.clear()
+    await reply_with_menu(message, "Возврат в главное меню")
+
 async def request_feedback(message: types.Message, state: FSMContext):
     """Запрашивает отзыв у пользователя"""
     await message.answer(

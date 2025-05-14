@@ -48,7 +48,7 @@ def register_handlers(dp):
     router.message.register(process_withdraw_details, WithdrawStates.waiting_for_details)
     router.callback_query.register(handle_withdraw_request, F.data.startswith("withdraw_approve_"))
     router.callback_query.register(handle_withdraw_request, F.data.startswith("withdraw_reject_"))
-    router.message.register(handle_back_button, F.text == texts.BACK_BUTTON)
+    router.message.register(handle_balance_back, F.text == texts.BACK_BUTTON)
     
     # Поиск шпаргалок
     router.callback_query.register(process_subject, F.data.startswith("subject_"), SearchCheatsheetStates.waiting_for_subject)
