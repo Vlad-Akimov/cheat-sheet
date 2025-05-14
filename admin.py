@@ -266,6 +266,27 @@ async def view_withdraw_requests(message: types.Message):
     
     await message.answer(text)
 
+async def view_feedback(message: types.Message):
+    if message.from_user.id != config.ADMIN_ID:
+        return
+    
+    feedbacks = db.get_pending_feedback()
+    
+    if not feedbacks:
+        await message.answer("Нет ожидающих отзывов.")
+        return
+    
+    text = "Ожидающие отзывы:\n\n"
+    for fb in feedbacks:
+        text += (
+            f"ID: {fb['id']}\n"
+            f"Пользователь: @{fb['username']} (ID: {fb['user_id']})\n"
+            f"Сообщение: {fb['message']}\n"
+            f"Дата: {fb['created_at']}\n\n"
+        )
+    
+    await message.answer(text)
+
 def register_admin_handlers(router: Router):
     router.callback_query.register(approve_cheatsheet, F.data.startswith("approve:"))
     router.callback_query.register(reject_cheatsheet, F.data.startswith("reject:"))
@@ -275,3 +296,4 @@ def register_admin_handlers(router: Router):
     router.callback_query.register(back_to_edit_menu, F.data.startswith("back_to_edit_"))
     router.message.register(process_new_name, EditCheatsheetStates.waiting_for_new_name)
     router.message.register(view_withdraw_requests, Command("withdraws"))
+    router.message.register(view_feedback, Command("feedback"))

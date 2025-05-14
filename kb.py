@@ -9,10 +9,24 @@ def main_menu():
         keyboard=[
             [KeyboardButton(text=texts.SEARCH_CHEATSHEET)],
             [KeyboardButton(text=texts.ADD_CHEATSHEET), KeyboardButton(text=texts.MY_CHEATSHEETS)],
-            [KeyboardButton(text=texts.BALANCE), KeyboardButton(text=texts.DEPOSIT)]
+            [KeyboardButton(text=texts.BALANCE), KeyboardButton(text=texts.DEPOSIT)],
+            [KeyboardButton(text=texts.FEEDBACK)]
         ],
         resize_keyboard=True
     )
+
+def feedback_review_kb(feedback_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=texts.APPROVE_BUTTON, 
+        callback_data=f"feedback_approve_{feedback_id}"
+    )
+    builder.button(
+        text=texts.REJECT_BUTTON, 
+        callback_data=f"feedback_reject_{feedback_id}"
+    )
+    builder.adjust(2)
+    return builder.as_markup()
 
 def withdraw_kb():
     return ReplyKeyboardMarkup(

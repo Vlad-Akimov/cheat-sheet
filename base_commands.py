@@ -11,7 +11,7 @@ from kb import *
 from db import db
 from admin_commands import notify_admin_about_request
 from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
-from states import MyCheatsheetsStates, SearchCheatsheetStates, AddCheatsheetStates, BalanceRequestStates, WithdrawStates
+from states import FeedbackStates, MyCheatsheetsStates, SearchCheatsheetStates, AddCheatsheetStates, BalanceRequestStates, WithdrawStates
 
 # Создаем роутер
 router = Router()
@@ -180,6 +180,115 @@ async def show_balance(message: types.Message):
         f"💰 Ваш баланс: {balance} руб.",
         reply_markup=withdraw_kb()  # Показываем кнопку вывода после просмотра баланса
     )
+
+async def request_feedback(message: types.Message, state: FSMContext):
+    """Запрашивает отзыв у пользователя"""
+    await message.answer(
+        texts.FEEDBACK_PROMPT,
+        reply_markup=cancel_kb()
+    )
+    await state.set_state(FeedbackStates.waiting_for_feedback)
+
+async def process_feedback(message: types.Message, state: FSMContext):
+    """Обрабатывает полученный отзыв"""
+    if len(message.text) > 1000:
+        await message.answer(texts.FEEDBACK_TOO_LONG)
+        return
+    
+    # Сохраняем отзыв
+    feedback_id = db.add_feedback(message.from_user.id, message.text)
+    
+    if feedback_id:
+        # Уведомляем админа
+        await notify_admin_about_feedback(
+            message.bot,
+            feedback_id,
+            message.from_user,
+            message.text
+        )
+        await message.answer(texts.FEEDBACK_SENT, reply_markup=main_menu())
+    else:
+        await message.answer(texts.ERROR, reply_markup=main_menu())
+    
+    await delete_previous_messages(message, 3)
+    await state.clear()
+
+async def notify_admin_about_feedback(bot: Bot, feedback_id: int, user: types.User, message: str):
+    """Уведомляет админа о новом отзыве"""
+    text = texts.FEEDBACK_NOTIFICATION.format(
+        id=feedback_id,
+        username=user.username,
+        user_id=user.id,
+        message=message,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    
+    markup = feedback_review_kb(feedback_id)
+    
+    try:
+        await bot.send_message(
+            chat_id=config.ADMIN_ID,
+            text=text,
+            reply_markup=markup
+        )
+    except Exception as e:
+        print(f"Ошибка уведомления админа: {e}")
+
+async def handle_feedback_request(callback: types.CallbackQuery):
+    """Обрабатывает действия админа с отзывами"""
+    try:
+        parts = callback.data.split("_")
+        if len(parts) != 3:
+            await callback.answer("Неверный формат запроса")
+            return
+            
+        action = parts[1]
+        try:
+            feedback_id = int(parts[2])
+        except ValueError:
+            await callback.answer("Неверный ID отзыва")
+            return
+            
+        admin_id = callback.from_user.id
+        
+        # Обновляем статус отзыва
+        success = db.update_feedback_status(
+            feedback_id=feedback_id,
+            status="approved" if action == "approve" else "rejected",
+            admin_id=admin_id
+        )
+        
+        if not success:
+            await callback.answer("Не удалось обновить отзыв")
+            return
+            
+        # Получаем данные отзыва
+        db.cursor.execute(
+            "SELECT user_id, message FROM feedback WHERE id = ?", 
+            (feedback_id,)
+        )
+        feedback = db.cursor.fetchone()
+        
+        if feedback:
+            user_id, message = feedback
+            
+            # Уведомляем пользователя
+            user_message = texts.FEEDBACK_APPROVED if action == "approve" else texts.FEEDBACK_REJECTED
+            try:
+                await callback.bot.send_message(user_id, user_message)
+            except Exception as e:
+                print(f"Ошибка уведомления пользователя: {e}")
+                await callback.answer("Не удалось уведомить пользователя")
+        
+        await callback.message.edit_text(
+            f"Отзыв #{feedback_id} {'одобрен' if action == 'approve' else 'отклонен'}",
+            reply_markup=None
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        print(f"Ошибка обработки отзыва: {e}")
+        await callback.answer("Произошла ошибка")
 
 # Поиск шпаргалок ---------------------------------------------
 

@@ -20,6 +20,12 @@ def register_handlers(dp):
     router.message.register(add_cheatsheet, F.text == texts.ADD_CHEATSHEET)
     router.message.register(show_balance, F.text == texts.BALANCE)
     
+    # Обратная связь
+    router.message.register(request_feedback, F.text == texts.FEEDBACK)
+    router.message.register(process_feedback, FeedbackStates.waiting_for_feedback)
+    router.callback_query.register(handle_feedback_request, F.data.startswith("feedback_approve_"))
+    router.callback_query.register(handle_feedback_request, F.data.startswith("feedback_reject_"))
+    
     # Мои шпаргалки
     router.message.register(show_user_cheatsheets_menu, F.text == texts.MY_CHEATSHEETS)
     router.callback_query.register(process_my_subject, F.data.startswith("my_subject_"), MyCheatsheetsStates.waiting_for_subject)

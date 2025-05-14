@@ -102,6 +102,20 @@ class Database:
         )
         """)
         
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',  -- pending, approved, rejected
+            admin_id INTEGER,
+            processed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (admin_id) REFERENCES users(id)
+        )
+        """)
+        
         self.conn.commit()
     
     def close(self):
@@ -484,6 +498,46 @@ class Database:
             return self.cursor.rowcount > 0
         except Exception as e:
             print(f"Ошибка обновления статуса запроса на вывод: {e}")
+            self.conn.rollback()
+            return False
+    
+    def add_feedback(self, user_id: int, message: str) -> int:
+        """Добавляет отзыв в базу данных"""
+        try:
+            self.cursor.execute(
+                "INSERT INTO feedback (user_id, message) VALUES (?, ?)",
+                (user_id, message)
+            )
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except Exception as e:
+            print(f"Ошибка добавления отзыва: {e}")
+            return None
+
+    def get_pending_feedback(self) -> List[Dict]:
+        """Получает все ожидающие отзывы"""
+        self.cursor.execute("""
+        SELECT f.*, u.username 
+        FROM feedback f
+        JOIN users u ON f.user_id = u.id
+        WHERE f.status = 'pending'
+        ORDER BY f.created_at
+        """)
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def update_feedback_status(self, feedback_id: int, status: str, admin_id: int) -> bool:
+        """Обновляет статус отзыва"""
+        try:
+            self.cursor.execute(
+                """UPDATE feedback 
+                SET status = ?, admin_id = ?, processed_at = CURRENT_TIMESTAMP 
+                WHERE id = ?""",
+                (status, admin_id, feedback_id)
+            )
+            self.conn.commit()
+            return self.cursor.rowcount > 0
+        except Exception as e:
+            print(f"Ошибка обновления статуса отзыва: {e}")
             self.conn.rollback()
             return False
 
