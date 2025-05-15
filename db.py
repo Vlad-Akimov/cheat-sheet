@@ -525,6 +525,11 @@ class Database:
         """)
         return [dict(row) for row in self.cursor.fetchall()]
 
+    def get_all_users(self) -> List[int]:
+        """Получает список всех ID пользователей"""
+        self.cursor.execute("SELECT id FROM users")
+        return [row[0] for row in self.cursor.fetchall()]
+    
     def update_feedback_status(self, feedback_id: int, status: str, admin_id: int) -> bool:
         """Обновляет статус отзыва"""
         try:

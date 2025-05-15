@@ -1,13 +1,15 @@
+import asyncio
 import logging
-from aiogram import Router, types, F
+from aiogram import Bot, Router, types, F
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
+from aiogram.enums import ContentType
 from config import config
 from db import db
 from text import texts
-from kb import admin_back_kb, admin_edit_name_back_kb, admin_edit_name_kb, admin_review_kb, cancel_kb, main_menu
-from states import EditCheatsheetStates
+from kb import *
+from states import BroadcastStates, EditCheatsheetStates
 
 async def approve_cheatsheet(callback: CallbackQuery):
     try:
@@ -358,6 +360,106 @@ def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
         f"👤 Автор: {cheatsheet['author']}"
     )
 
+async def start_broadcast(message: types.Message, state: FSMContext):
+    """Начало создания рассылки"""
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    
+    users = db.get_all_users()
+    if not users:
+        await message.answer(texts.BROADCAST_NO_USERS)
+        return
+    
+    await state.update_data(users=users, users_count=len(users))
+    await message.answer(texts.BROADCAST_START, reply_markup=cancel_kb())
+    await state.set_state(BroadcastStates.waiting_for_content)
+
+async def process_broadcast_content(message: types.Message, state: FSMContext, bot: Bot):
+    """Обработка контента для рассылки"""
+    data = await state.get_data()
+    
+    # Сохраняем контент в зависимости от типа
+    content = {
+        'text': message.html_text if message.text else message.caption,
+        'content_type': message.content_type,
+    }
+    
+    if message.photo:
+        content['file_id'] = message.photo[-1].file_id
+    elif message.document:
+        content['file_id'] = message.document.file_id
+        content['file_name'] = message.document.file_name
+    
+    await state.update_data(content=content)
+    
+    # Формируем текст для подтверждения
+    preview_text = content['text'] or "📷 Фото" if message.photo else "📄 Файл"
+    await message.answer(
+        texts.BROADCAST_CONFIRM.format(
+            content=preview_text,
+            users_count=data['users_count']
+        ),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Отправить", callback_data="broadcast_confirm")],
+            [InlineKeyboardButton(text="❌ Отменить", callback_data="broadcast_cancel")]
+        ])
+    )
+    await state.set_state(BroadcastStates.waiting_for_confirmation)
+
+async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Подтверждение и отправка рассылки"""
+    data = await state.get_data()
+    users = data['users']
+    content = data['content']
+    
+    await callback.message.edit_text("⏳ Начинаю рассылку...")
+    
+    success = 0
+    failed = 0
+    
+    # Отправляем сообщения пачками
+    for i in range(0, len(users), config.BROADCAST_CHUNK_SIZE):
+        chunk = users[i:i + config.BROADCAST_CHUNK_SIZE]
+        
+        for user_id in chunk:
+            try:
+                if content['content_type'] == ContentType.TEXT:
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text=content['text'],
+                        parse_mode="HTML"
+                    )
+                elif content['content_type'] == ContentType.PHOTO:
+                    await bot.send_photo(
+                        chat_id=user_id,
+                        photo=content['file_id'],
+                        caption=content.get('text'),
+                        parse_mode="HTML"
+                    )
+                elif content['content_type'] == ContentType.DOCUMENT:
+                    await bot.send_document(
+                        chat_id=user_id,
+                        document=content['file_id'],
+                        caption=content.get('text'),
+                        parse_mode="HTML"
+                    )
+                success += 1
+            except Exception as e:
+                logging.error(f"Ошибка отправки сообщения пользователю {user_id}: {e}")
+                failed += 1
+            await asyncio.sleep(0.1)
+    
+    await callback.message.edit_text(
+        texts.BROADCAST_SUCCESS.format(success=success, total=len(users))
+    )
+    await state.clear()
+
+async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
+    """Отмена рассылки"""
+    await callback.message.edit_text(texts.BROADCAST_CANCEL)
+    await state.clear()
+
+
 def register_admin_handlers(router: Router):
     router.callback_query.register(approve_cheatsheet, F.data.startswith("approve:"))
     router.callback_query.register(reject_cheatsheet, F.data.startswith("reject:"))
@@ -369,3 +471,12 @@ def register_admin_handlers(router: Router):
     router.callback_query.register(back_to_edit_menu, F.data.startswith("back_to_edit_"))
     router.message.register(view_withdraw_requests, Command("withdraws"))
     router.message.register(view_feedback, Command("feedback"))
+    
+    router.message.register(start_broadcast, Command("broadcast"))
+    router.message.register(
+        process_broadcast_content, 
+        BroadcastStates.waiting_for_content,
+        F.content_type.in_({ContentType.TEXT, ContentType.PHOTO, ContentType.DOCUMENT})
+    )
+    router.callback_query.register(confirm_broadcast, F.data == "broadcast_confirm", BroadcastStates.waiting_for_confirmation)
+    router.callback_query.register(cancel_broadcast, F.data == "broadcast_cancel", BroadcastStates.waiting_for_confirmation)
