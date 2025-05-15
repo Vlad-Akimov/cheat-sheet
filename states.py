@@ -30,6 +30,7 @@ class MyCheatsheetsStates(StatesGroup):
 
 class EditCheatsheetStates(StatesGroup):
     waiting_for_new_name = State()
+    waiting_for_new_price = State()
 
 class WithdrawStates(StatesGroup):
     waiting_for_amount = State()

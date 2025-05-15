@@ -83,13 +83,15 @@ def cancel_kb() -> InlineKeyboardMarkup:
     builder.button(text="❌ Отмена", callback_data="cancel")
     return builder.as_markup()
 
-# Кнопки модерации для админа
 def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
-    print(cheatsheet_id)
     builder = InlineKeyboardBuilder()
     builder.button(
         text="✏️ Изменить название", 
         callback_data=f"edit_name:{cheatsheet_id}"
+    )
+    builder.button(
+        text="💰 Изменить цену", 
+        callback_data=f"edit_price:{cheatsheet_id}"
     )
     builder.button(
         text=texts.APPROVE_BUTTON, 
@@ -99,7 +101,7 @@ def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
         text=texts.REJECT_BUTTON, 
         callback_data=f"reject:{cheatsheet_id}"
     )
-    builder.adjust(1, 2)
+    builder.adjust(1, 1, 2)
     return builder.as_markup()
 
 def admin_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:

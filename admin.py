@@ -287,13 +287,85 @@ async def view_feedback(message: types.Message):
     
     await message.answer(text)
 
+async def start_edit_cheatsheet_price(callback: CallbackQuery, state: FSMContext):
+    try:
+        _, cheatsheet_id = callback.data.split(":")
+        cheatsheet_id = int(cheatsheet_id)
+        
+        await state.update_data(
+            cheatsheet_id=cheatsheet_id,
+            original_message_id=callback.message.message_id,
+            chat_id=callback.message.chat.id
+        )
+        
+        await callback.message.edit_text(
+            "Введите новую цену шпаргалки (в рублях):",
+            reply_markup=admin_back_kb(cheatsheet_id)
+        )
+        await callback.answer()
+        await state.set_state(EditCheatsheetStates.waiting_for_new_price)
+    except Exception as e:
+        logging.error(f"Error starting price edit: {e}")
+        await callback.answer("Ошибка при изменении цены", show_alert=True)
+
+async def process_new_price(message: Message, state: FSMContext):
+    try:
+        data = await state.get_data()
+        cheatsheet_id = data.get("cheatsheet_id")
+        
+        try:
+            price = float(message.text)
+            if price < 0:
+                raise ValueError
+        except ValueError:
+            await message.answer("Неверная цена. Введите положительное число.")
+            return
+        
+        # Обновляем цену в БД
+        db.cursor.execute(
+            "UPDATE cheatsheets SET price = ? WHERE id = ?",
+            (price, cheatsheet_id)
+        )
+        db.conn.commit()
+        
+        # Получаем обновленные данные
+        cheatsheet = db.get_cheatsheet(cheatsheet_id, message.from_user.id)
+        
+        # Редактируем оригинальное сообщение
+        await message.bot.edit_message_text(
+            chat_id=data['chat_id'],
+            message_id=data['original_message_id'],
+            text=format_cheatsheet_for_admin(cheatsheet),
+            reply_markup=admin_review_kb(cheatsheet_id)
+        )
+        
+        await message.answer("✅ Цена успешно изменена!", reply_markup=main_menu())
+    except Exception as e:
+        logging.error(f"Error processing new price: {e}")
+        await message.answer("Ошибка при изменении цены")
+    finally:
+        await state.clear()
+
+def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
+    """Форматирует информацию о шпаргалке для админа"""
+    return (
+        f"📝 Редактирование шпаргалки:\n\n"
+        f"🏷 Название: {cheatsheet['name']}\n"
+        f"📚 Предмет: {cheatsheet['subject']}\n"
+        f"🔢 Семестр: {cheatsheet['semester']}\n"
+        f"📝 Тип: {cheatsheet['type']}\n"
+        f"💰 Цена: {cheatsheet['price']} руб.\n"  # Добавляем отображение цены
+        f"👤 Автор: {cheatsheet['author']}"
+    )
+
 def register_admin_handlers(router: Router):
     router.callback_query.register(approve_cheatsheet, F.data.startswith("approve:"))
     router.callback_query.register(reject_cheatsheet, F.data.startswith("reject:"))
     router.callback_query.register(start_edit_cheatsheet_name, F.data.startswith("edit_name:"))
+    router.callback_query.register(start_edit_cheatsheet_price, F.data.startswith("edit_price:"))
     router.callback_query.register(back_to_edit_menu, F.data.startswith("back_edit:"))
     router.message.register(process_new_name, EditCheatsheetStates.waiting_for_new_name)
+    router.message.register(process_new_price, EditCheatsheetStates.waiting_for_new_price)
     router.callback_query.register(back_to_edit_menu, F.data.startswith("back_to_edit_"))
-    router.message.register(process_new_name, EditCheatsheetStates.waiting_for_new_name)
     router.message.register(view_withdraw_requests, Command("withdraws"))
     router.message.register(view_feedback, Command("feedback"))
