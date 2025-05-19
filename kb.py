@@ -3,6 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from text import texts
 
+
 # Главное меню
 def main_menu():
     return ReplyKeyboardMarkup(
@@ -14,6 +15,7 @@ def main_menu():
         ],
         resize_keyboard=True
     )
+
 
 def feedback_review_kb(feedback_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -28,6 +30,7 @@ def feedback_review_kb(feedback_id: int) -> InlineKeyboardMarkup:
     builder.adjust(2)
     return builder.as_markup()
 
+
 def withdraw_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -37,10 +40,12 @@ def withdraw_kb():
         resize_keyboard=True
     )
 
+
 def back_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=texts.BACK_BUTTON, callback_data="back_to_menu")
     return builder.as_markup()
+
 
 # Клавиатура для выбора предмета
 def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
@@ -58,6 +63,7 @@ def subjects_kb(subjects: list[str]) -> InlineKeyboardMarkup:
     
     return builder.as_markup()
 
+
 # Клавиатура для выбора семестра
 def semesters_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -68,6 +74,7 @@ def semesters_kb() -> InlineKeyboardMarkup:
     builder.adjust(4, 4, 2)  # 4 кнопки в первых двух рядах, затем кнопки "Назад" и "Отмена"
     return builder.as_markup()
 
+
 def types_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="Формулы", callback_data="type_formulas")
@@ -77,11 +84,13 @@ def types_kb() -> InlineKeyboardMarkup:
     builder.adjust(2, 2)  # 2 кнопки в ряду
     return builder.as_markup()
 
+
 # Кнопка отмены
 def cancel_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="❌ Отмена", callback_data="cancel")
     return builder.as_markup()
+
 
 def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -104,6 +113,7 @@ def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     builder.adjust(1, 1, 2)
     return builder.as_markup()
 
+
 def admin_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     print(cheatsheet_id)
     builder = InlineKeyboardBuilder()
@@ -113,6 +123,7 @@ def admin_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     )
     return builder.as_markup()
 
+
 # Создадим клавиатуру для админа
 def admin_balance_kb():
     return ReplyKeyboardMarkup(
@@ -121,6 +132,7 @@ def admin_balance_kb():
         ],
         resize_keyboard=True
     )
+
 
 def admin_edit_name_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -139,6 +151,7 @@ def admin_edit_name_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     builder.adjust(1, 2)
     return builder.as_markup()
 
+
 def admin_edit_name_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     """Клавиатура с кнопкой 'Назад' при изменении названия"""
     builder = InlineKeyboardBuilder()
@@ -147,6 +160,7 @@ def admin_edit_name_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
         callback_data=f"back_to_edit_{cheatsheet_id}"
     )
     return builder.as_markup()
+
 
 # Кнопка покупки
 def buy_kb(cheatsheet_id: int, price: float) -> InlineKeyboardMarkup:
@@ -157,6 +171,7 @@ def buy_kb(cheatsheet_id: int, price: float) -> InlineKeyboardMarkup:
     )
     return builder.as_markup()
 
+
 # Кнопка для бесплатной шпаргалки
 def free_kb(file_id: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -165,6 +180,7 @@ def free_kb(file_id: str) -> InlineKeyboardMarkup:
         callback_data=f"free_{file_id}"
     )
     return builder.as_markup()
+
 
 def my_cheatsheet_kb(cheatsheet: dict) -> InlineKeyboardMarkup:
     """Клавиатура для шпаргалки в разделе 'Мои шпаргалки'"""
@@ -177,6 +193,7 @@ def my_cheatsheet_kb(cheatsheet: dict) -> InlineKeyboardMarkup:
     
     return builder.as_markup()
 
+
 def types_kb_for_my_cheatsheets() -> InlineKeyboardMarkup:
     """Клавиатура для выбора типа в разделе 'Мои шпаргалки'"""
     builder = InlineKeyboardBuilder()
@@ -186,6 +203,7 @@ def types_kb_for_my_cheatsheets() -> InlineKeyboardMarkup:
     builder.button(text=texts.CANCEL_SEARCH, callback_data="back_to_menu")
     builder.adjust(2, 2)
     return builder.as_markup()
+
 
 def semesters_kb_for_my_cheatsheets() -> InlineKeyboardMarkup:
     """Клавиатура для выбора семестра в разделе 'Мои шпаргалки'"""

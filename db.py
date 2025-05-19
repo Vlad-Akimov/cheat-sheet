@@ -9,10 +9,12 @@ class Database:
         self._init_db()
         self._migrate_db()  # Добавляем миграции
     
+    
     def rollback(self):
         """Откатывает текущую транзакцию"""
         self.conn.rollback()
         print("Транзакция откачена")
+    
     
     def _init_db(self):
         # Пользователи (обновленная структура)
@@ -118,6 +120,7 @@ class Database:
         
         self.conn.commit()
     
+    
     def close(self):
         """Закрывает соединение с базой данных"""
         try:
@@ -126,6 +129,7 @@ class Database:
                 print("Соединение с базой данных закрыто")
         except Exception as e:
             print(f"Ошибка при закрытии соединения: {e}")
+    
     
     def _migrate_db(self):
         """Добавляем отсутствующие колонки в существующие таблицы"""
@@ -145,6 +149,7 @@ class Database:
                 
         except Exception as e:
             print(f"Ошибка при миграции базы данных: {e}")
+    
     
     # Пользователи (обновленный метод)
     def add_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None):
@@ -166,10 +171,12 @@ class Database:
             print(f"Ошибка при добавлении пользователя: {e}")
             return False
     
+    
     def get_user_balance(self, user_id: int) -> float:
         self.cursor.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
         result = self.cursor.fetchone()
         return result[0] if result else 0.0
+    
     
     def update_user_balance(self, user_id: int, amount: float) -> bool:
         """Обновляет баланс пользователя с проверками"""
@@ -195,6 +202,7 @@ class Database:
             self.conn.rollback()
             return False
     
+    
     # Предметы
     def add_subject(self, name: str):
         try:
@@ -204,9 +212,11 @@ class Database:
         except sqlite3.IntegrityError:
             return False
     
+    
     def get_subjects(self) -> List[str]:
         self.cursor.execute("SELECT name FROM subjects")
         return [row[0] for row in self.cursor.fetchall()]
+    
     
     # Шпаргалки
     def add_cheatsheet(self, subject_id: int, semester: int, type_: str, name: str, file_id: str, file_type: str, price: float, author_id: int) -> int:
@@ -216,6 +226,7 @@ class Database:
         )
         self.conn.commit()
         return self.cursor.lastrowid
+    
     
     def get_cheatsheet(self, cheatsheet_id: int, user_id: int = None) -> Optional[Dict]:
         """Получает полную информацию о шпаргалке с проверкой прав доступа"""
@@ -249,6 +260,7 @@ class Database:
             "created_at": result[10],
             "approved_at": result[11]
         }
+    
     
     def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None, user_id: int = None) -> List[Dict]:
         query = """
@@ -293,6 +305,7 @@ class Database:
             "created_at": row[10],
             "approved_at": row[11]
         } for row in results]
+    
     
     def get_user_cheatsheets(self, user_id: int, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
         """Получает шпаргалки пользователя с возможностью фильтрации"""
@@ -364,6 +377,7 @@ class Database:
         
         return created + purchased
     
+    
     def approve_cheatsheet(self, cheatsheet_id: int):
         """Одобряет шпаргалку"""
         try:
@@ -377,9 +391,11 @@ class Database:
             print(f"Ошибка при одобрении шпаргалки: {e}")
             return False
     
+    
     def reject_cheatsheet(self, cheatsheet_id: int):
         self.cursor.execute("DELETE FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
         self.conn.commit()
+    
     
     # Покупки
     def add_purchase(self, user_id: int, cheatsheet_id: int, amount: float) -> bool:
@@ -397,6 +413,7 @@ class Database:
             self.conn.rollback()
             return False
     
+    
     def add_balance_request(self, user_id: int, amount: float, proof_text: str = None, 
                             file_id: str = None, file_type: str = None) -> int:
         """Добавляет запрос на пополнение с проверкой"""
@@ -413,6 +430,7 @@ class Database:
             print(f"Ошибка добавления запроса: {e}")
             return None
 
+
     def get_pending_requests(self) -> List[Dict]:
         """Получает все ожидающие запросы"""
         self.cursor.execute("""
@@ -423,6 +441,7 @@ class Database:
         ORDER BY br.created_at
         """)
         return [dict(row) for row in self.cursor.fetchall()]
+
 
     def update_request_status(self, request_id: int, status: str, admin_id: int) -> bool:
         """Обновляет статус запроса на пополнение баланса"""
@@ -439,6 +458,7 @@ class Database:
             print(f"Ошибка обновления статуса запроса: {e}")
             self.conn.rollback()
             return False
+    
     
     def get_purchased_cheatsheets(self, user_id: int) -> List[Dict]:
         self.cursor.execute("""
@@ -459,6 +479,7 @@ class Database:
             "is_purchased": True
         } for row in self.cursor.fetchall()]
     
+    
     def add_withdraw_request(self, user_id: int, amount: float, details: str) -> int:
         """Добавляет запрос на вывод средств"""
         try:
@@ -474,6 +495,7 @@ class Database:
             print(f"Ошибка добавления запроса на вывод: {e}")
             return None
 
+
     def get_pending_withdraw_requests(self) -> List[Dict]:
         """Получает все ожидающие запросы на вывод"""
         self.cursor.execute("""
@@ -484,6 +506,7 @@ class Database:
         ORDER BY wr.created_at
         """)
         return [dict(row) for row in self.cursor.fetchall()]
+
 
     def update_withdraw_status(self, request_id: int, status: str, admin_id: int) -> bool:
         """Обновляет статус запроса на вывод"""
@@ -501,6 +524,7 @@ class Database:
             self.conn.rollback()
             return False
     
+    
     def add_feedback(self, user_id: int, message: str) -> int:
         """Добавляет отзыв в базу данных"""
         try:
@@ -514,6 +538,7 @@ class Database:
             print(f"Ошибка добавления отзыва: {e}")
             return None
 
+
     def get_pending_feedback(self) -> List[Dict]:
         """Получает все ожидающие отзывы"""
         self.cursor.execute("""
@@ -525,10 +550,12 @@ class Database:
         """)
         return [dict(row) for row in self.cursor.fetchall()]
 
+
     def get_all_users(self) -> List[int]:
         """Получает список всех ID пользователей"""
         self.cursor.execute("SELECT id FROM users")
         return [row[0] for row in self.cursor.fetchall()]
+    
     
     def update_feedback_status(self, feedback_id: int, status: str, admin_id: int) -> bool:
         """Обновляет статус отзыва"""

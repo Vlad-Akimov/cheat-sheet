@@ -11,7 +11,7 @@ from kb import *
 from db import db
 from admin_commands import notify_admin_about_request
 from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
-from states import FeedbackStates, MyCheatsheetsStates, SearchCheatsheetStates, AddCheatsheetStates, BalanceRequestStates, WithdrawStates
+from states import *
 
 # Создаем роутер
 router = Router()
@@ -25,6 +25,7 @@ async def cmd_start(message: types.Message):
     except Exception as e:
         logging.error(f"Ошибка в cmd_start: {e}")
         await message.answer("Произошла ошибка. Подождите немного, мы уже решаем эту проблему.")
+
 
 async def cmd_help(message: types.Message):
     await reply_with_menu(message, texts.HELP)
@@ -40,6 +41,7 @@ async def search_cheatsheets(message: types.Message, state: FSMContext):
     await message.answer(texts.SELECT_SUBJECT, reply_markup=subjects_kb(subjects))
     await state.set_state(SearchCheatsheetStates.waiting_for_subject)
 
+
 async def add_cheatsheet(message: types.Message, state: FSMContext):
     await delete_previous_messages(message)
     subjects = db.get_subjects()
@@ -48,6 +50,7 @@ async def add_cheatsheet(message: types.Message, state: FSMContext):
         return
     await message.answer(texts.SELECT_SUBJECT, reply_markup=subjects_kb(subjects))
     await state.set_state(AddCheatsheetStates.waiting_for_subject)
+
 
 async def show_user_cheatsheets_menu(message: types.Message, state: FSMContext):
     """Показывает меню фильтрации для моих шпаргалок"""
@@ -69,17 +72,20 @@ async def show_user_cheatsheets_menu(message: types.Message, state: FSMContext):
     await message.answer(texts.FILTER_BY_SUBJECT, reply_markup=builder.as_markup())
     await state.set_state(MyCheatsheetsStates.waiting_for_subject)
 
+
 async def process_my_subject(callback: types.CallbackQuery, state: FSMContext):
     subject = callback.data.split("_")[2]  # my_subject_Математика → Математика
     await state.update_data(subject=subject)
     await callback.message.edit_text("Выберите семестр:", reply_markup=semesters_kb_for_my_cheatsheets())
     await state.set_state(MyCheatsheetsStates.waiting_for_semester)
 
+
 async def process_my_semester(callback: types.CallbackQuery, state: FSMContext):
     semester = int(callback.data.split("_")[2])  # my_semester_1 → 1
     await state.update_data(semester=semester)
     await callback.message.edit_text("Выберите тип:", reply_markup=types_kb_for_my_cheatsheets())
     await state.set_state(MyCheatsheetsStates.waiting_for_type)
+
 
 async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[2]  # my_type_formulas → formulas
@@ -111,6 +117,7 @@ async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
 
+
 async def my_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
     """Назад к выбору предмета в 'Мои шпаргалки'"""
     await state.set_state(MyCheatsheetsStates.waiting_for_subject)
@@ -131,6 +138,7 @@ async def my_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
+
 async def my_back_to_semester(callback: types.CallbackQuery, state: FSMContext):
     """Назад к выбору семестра в 'Мои шпаргалки'"""
     await state.set_state(MyCheatsheetsStates.waiting_for_semester)
@@ -139,6 +147,7 @@ async def my_back_to_semester(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=semesters_kb_for_my_cheatsheets()
     )
     await callback.answer()
+
 
 async def open_my_cheatsheet(callback: types.CallbackQuery):
     try:
@@ -174,6 +183,7 @@ async def open_my_cheatsheet(callback: types.CallbackQuery):
         logging.error(f"Error opening cheatsheet: {e}")
         await callback.answer("Произошла ошибка при открытии шпаргалки", show_alert=True)
 
+
 async def show_balance(message: types.Message):
     balance = db.get_user_balance(message.from_user.id)
     await message.answer(
@@ -181,10 +191,12 @@ async def show_balance(message: types.Message):
         reply_markup=withdraw_kb()  # Показываем кнопку вывода после просмотра баланса
     )
 
+
 async def handle_balance_back(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Назад' из раздела баланса"""
     await state.clear()
     await reply_with_menu(message, "Возврат в главное меню")
+
 
 async def request_feedback(message: types.Message, state: FSMContext):
     """Запрашивает отзыв у пользователя"""
@@ -193,6 +205,7 @@ async def request_feedback(message: types.Message, state: FSMContext):
         reply_markup=cancel_kb()
     )
     await state.set_state(FeedbackStates.waiting_for_feedback)
+
 
 async def process_feedback(message: types.Message, state: FSMContext):
     """Обрабатывает полученный отзыв"""
@@ -218,6 +231,7 @@ async def process_feedback(message: types.Message, state: FSMContext):
     await delete_previous_messages(message, 3)
     await state.clear()
 
+
 async def notify_admin_about_feedback(bot: Bot, feedback_id: int, user: types.User, message: str):
     """Уведомляет админа о новом отзыве"""
     text = texts.FEEDBACK_NOTIFICATION.format(
@@ -238,6 +252,7 @@ async def notify_admin_about_feedback(bot: Bot, feedback_id: int, user: types.Us
         )
     except Exception as e:
         print(f"Ошибка уведомления админа: {e}")
+
 
 async def handle_feedback_request(callback: types.CallbackQuery):
     """Обрабатывает действия админа с отзывами"""
@@ -303,11 +318,13 @@ async def process_subject(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(texts.SELECT_SEMESTER, reply_markup=semesters_kb())
     await state.set_state(SearchCheatsheetStates.waiting_for_semester)
 
+
 async def process_semester(callback: types.CallbackQuery, state: FSMContext):
     semester = int(callback.data.split("_")[1])
     await state.update_data(semester=semester)
     await callback.message.edit_text(texts.SELECT_TYPE, reply_markup=types_kb())
     await state.set_state(SearchCheatsheetStates.waiting_for_type)
+
 
 async def process_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
@@ -332,6 +349,9 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
         )
         return
     
+    # Получаем текущий список ID
+    current_search_message_ids = []
+    
     for cheatsheet in cheatsheets:
         # Форматируем дату публикации
         pub_date = cheatsheet.get("approved_at", cheatsheet.get("created_at", "неизвестно"))
@@ -346,7 +366,6 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
             approved_at=pub_date
         )
         
-        # Остальной код остается без изменений
         if cheatsheet["author_id"] == callback.from_user.id:
             markup = free_kb(cheatsheet["file_id"])
         else:
@@ -360,9 +379,12 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
                 else:
                     markup = free_kb(cheatsheet["file_id"])
         
-        await callback.message.answer(text, reply_markup=markup)
+        # Отправляем сообщение и сохраняем его ID
+        msg = await callback.message.answer(text, reply_markup=markup)
+        current_search_message_ids.append(msg.message_id)
     
-    await state.clear()
+    # Сохраняем ID сообщений с результатами в состояние
+    await state.update_data(current_search_message_ids=current_search_message_ids)
 
 # Добавление шпаргалок ----------------------------------------
 
@@ -372,17 +394,20 @@ async def process_add_subject(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(texts.SELECT_SEMESTER, reply_markup=semesters_kb())
     await state.set_state(AddCheatsheetStates.waiting_for_semester)
 
+
 async def process_add_semester(callback: types.CallbackQuery, state: FSMContext):
     semester = int(callback.data.split("_")[1])
     await state.update_data(semester=semester)
     await callback.message.edit_text(texts.SELECT_TYPE, reply_markup=types_kb())
     await state.set_state(AddCheatsheetStates.waiting_for_type)
 
+
 async def process_add_type(callback: types.CallbackQuery, state: FSMContext):
     type_ = callback.data.split("_")[1]
     await state.update_data(type=type_)
     await callback.message.edit_text("Введите название шпаргалки:", reply_markup=cancel_kb())
     await state.set_state(AddCheatsheetStates.waiting_for_name)
+
 
 async def process_name(message: types.Message, state: FSMContext):
     if len(message.text) > 100:
@@ -392,6 +417,7 @@ async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer(texts.SEND_FILE, reply_markup=cancel_kb())
     await state.set_state(AddCheatsheetStates.waiting_for_file)
+
 
 async def process_file(message: types.Message, state: FSMContext):
     if not is_valid_file_type(message):
@@ -411,6 +437,7 @@ async def process_file(message: types.Message, state: FSMContext):
     await state.update_data(file_id=file_id, file_type=file_type)
     await message.answer(texts.SET_PRICE, reply_markup=cancel_kb())
     await state.set_state(AddCheatsheetStates.waiting_for_price)
+
 
 async def process_price(message: types.Message, state: FSMContext):
     try:
@@ -572,7 +599,7 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
 
         # Проверяем, не куплена ли уже шпаргалка
         db.cursor.execute("SELECT 1 FROM purchases WHERE user_id = ? AND cheatsheet_id = ?", 
-                         (user_id, cheatsheet_id))
+                        (user_id, cheatsheet_id))
         if db.cursor.fetchone():
             if cheatsheet["file_type"] == "photo":
                 await callback.message.answer_photo(
@@ -669,6 +696,7 @@ async def request_balance(message: types.Message, state: FSMContext):
     )
     await state.set_state(BalanceRequestStates.waiting_for_amount)
 
+
 # Пользователь вводит сумму
 async def process_balance_amount(message: types.Message, state: FSMContext):
     try:
@@ -686,6 +714,7 @@ async def process_balance_amount(message: types.Message, state: FSMContext):
         await state.set_state(BalanceRequestStates.waiting_for_proof)
     except ValueError:
         await message.answer("Пожалуйста, введите сумму цифрами (например: 500)")
+
 
 # Пользователь отправляет подтверждение
 async def process_balance_proof(message: types.Message, state: FSMContext):
@@ -767,30 +796,96 @@ async def process_balance_request(message: types.Message, state: FSMContext):
         await message.answer(f"Ошибка: {e}")
         await state.clear()
 
+
 # Обработчик кнопки "Назад" в главное меню
 async def back_to_menu(callback: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await reply_with_menu(callback, "Поиск отменён.", delete_current=True)
+    """Обработчик кнопки 'Назад' в главное меню с удалением текущих результатов"""
+    try:
+        data = await state.get_data()
+        
+        # Удаляем сообщение с кнопками поиска
+        await callback.message.delete()
+        
+        # Удаляем только сообщения текущего поиска
+        if 'current_search_message_ids' in data:
+            for msg_id in data['current_search_message_ids']:
+                try:
+                    await callback.bot.delete_message(
+                        chat_id=callback.message.chat.id,
+                        message_id=msg_id
+                    )
+                except Exception as e:
+                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+        
+        # Очищаем состояние
+        await state.clear()
+        
+        # Отправляем главное меню
+        await reply_with_menu(callback, "Поиск отменён.", delete_current=False)
+        
+    except Exception as e:
+        logging.error(f"Ошибка в back_to_menu: {e}")
+        await callback.answer("Произошла ошибка при отмене поиска")
+
 
 # Обработчик кнопки "Назад" к выбору предмета
 async def back_to_subject(callback: types.CallbackQuery, state: FSMContext):
-    await state.set_state(SearchCheatsheetStates.waiting_for_subject)
-    subjects = db.get_subjects()
-    await callback.message.edit_text(
-        texts.SELECT_SUBJECT,
-        reply_markup=subjects_kb(subjects)
-    )
-    await callback.answer()
+    """Возврат к выбору предмета с удалением текущих результатов"""
+    try:
+        data = await state.get_data()
+        
+        # Удаляем только сообщения текущего поиска
+        if 'current_search_message_ids' in data:
+            for msg_id in data['current_search_message_ids']:
+                try:
+                    await callback.bot.delete_message(
+                        chat_id=callback.message.chat.id,
+                        message_id=msg_id
+                    )
+                except Exception as e:
+                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+        
+        await state.set_state(SearchCheatsheetStates.waiting_for_subject)
+        subjects = db.get_subjects()
+        await callback.message.edit_text(
+            texts.SELECT_SUBJECT,
+            reply_markup=subjects_kb(subjects)
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"Ошибка в back_to_subject: {e}")
+        await callback.answer("Произошла ошибка")
+
 
 # Обработчик кнопки "Назад" к выбору семестра
 async def back_to_semester(callback: types.CallbackQuery, state: FSMContext):
-    """Возврат к выбору семестра"""
-    await state.set_state(SearchCheatsheetStates.waiting_for_semester)
-    await callback.message.edit_text(
-        texts.SELECT_SEMESTER,
-        reply_markup=semesters_kb()
-    )
-    await callback.answer()
+    """Возврат к выбору семестра с удалением текущих результатов"""
+    try:
+        data = await state.get_data()
+        
+        # Удаляем только сообщения текущего поиска
+        if 'current_search_message_ids' in data:
+            for msg_id in data['current_search_message_ids']:
+                try:
+                    await callback.bot.delete_message(
+                        chat_id=callback.message.chat.id,
+                        message_id=msg_id
+                    )
+                except Exception as e:
+                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+        
+        await state.set_state(SearchCheatsheetStates.waiting_for_semester)
+        await callback.message.edit_text(
+            texts.SELECT_SEMESTER,
+            reply_markup=semesters_kb()
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"Ошибка в back_to_semester: {e}")
+        await callback.answer("Произошла ошибка")
+
 
 async def start_withdraw(message: types.Message, state: FSMContext):
     balance = db.get_user_balance(message.from_user.id)
@@ -803,6 +898,7 @@ async def start_withdraw(message: types.Message, state: FSMContext):
         reply_markup=cancel_kb()
     )
     await state.set_state(WithdrawStates.waiting_for_amount)
+
 
 async def process_withdraw_amount(message: types.Message, state: FSMContext):
     try:
@@ -821,6 +917,7 @@ async def process_withdraw_amount(message: types.Message, state: FSMContext):
         await state.set_state(WithdrawStates.waiting_for_details)
     except ValueError:
         await message.answer(texts.INVALID_AMOUNT_FORMAT)
+
 
 async def process_withdraw_details(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -859,8 +956,10 @@ async def process_withdraw_details(message: types.Message, state: FSMContext):
     
     await state.clear()
 
+
 async def handle_back_button(message: types.Message, state: FSMContext):
     await state.clear()
+
 
 async def notify_admin_about_withdraw(bot: Bot, request_id: int, user: types.User, amount: float, details: str):
     text = texts.WITHDRAW_REQUEST.format(
@@ -885,6 +984,7 @@ async def notify_admin_about_withdraw(bot: Bot, request_id: int, user: types.Use
         )
     except Exception as e:
         print(f"Ошибка уведомления админа: {e}")
+
 
 async def handle_withdraw_request(callback: types.CallbackQuery):
     try:

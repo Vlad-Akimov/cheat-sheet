@@ -5,10 +5,11 @@ from text import texts
 from kb import *
 from base_commands import *
 from admin_commands import *
-from states import SearchCheatsheetStates, AddCheatsheetStates, AddBalanceStates, BalanceRequestStates
+from states import *
 
 # Создаем роутер
 router = Router()
+
 
 def register_handlers(dp):
     # Команды

@@ -11,6 +11,7 @@ from text import texts
 from kb import *
 from states import BroadcastStates, EditCheatsheetStates
 
+
 async def approve_cheatsheet(callback: CallbackQuery):
     try:
         _, cheatsheet_id = callback.data.split(":")
@@ -30,6 +31,7 @@ async def approve_cheatsheet(callback: CallbackQuery):
         logging.error(f"Error approving cheatsheet: {e}")
         await callback.answer("Ошибка при одобрении шпаргалки", show_alert=True)
 
+
 async def reject_cheatsheet(callback: CallbackQuery):
     try:
         _, cheatsheet_id = callback.data.split(":")
@@ -48,6 +50,7 @@ async def reject_cheatsheet(callback: CallbackQuery):
     except Exception as e:
         logging.error(f"Error rejecting cheatsheet: {e}")
         await callback.answer("Ошибка при отклонении шпаргалки", show_alert=True)
+
 
 async def view_all_cheatsheets(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
@@ -133,6 +136,7 @@ async def handle_balance_request(callback: types.CallbackQuery):
         await callback.answer("Произошла ошибка")
     
 
+
 async def check_cheatsheets(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -182,6 +186,7 @@ async def start_edit_cheatsheet_name(callback: CallbackQuery, state: FSMContext)
         logging.error(f"Error starting name edit: {e}")
         await callback.answer("Ошибка при изменении названия", show_alert=True)
 
+
 async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
     try:
         _, cheatsheet_id = callback.data.split(":")
@@ -199,6 +204,7 @@ async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error returning to edit menu: {e}")
         await callback.answer("Ошибка при возврате", show_alert=True)
+
 
 async def process_new_name(message: Message, state: FSMContext):
     try:
@@ -234,6 +240,7 @@ async def process_new_name(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
+
 def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
     """Форматирует информацию о шпаргалке для админа"""
     return (
@@ -245,6 +252,7 @@ def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
         f"💰 Цена: {cheatsheet['price']} руб.\n"
         f"👤 Автор: {cheatsheet['author']}"
     )
+
 
 async def view_withdraw_requests(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
@@ -268,6 +276,7 @@ async def view_withdraw_requests(message: types.Message):
     
     await message.answer(text)
 
+
 async def view_feedback(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -289,6 +298,7 @@ async def view_feedback(message: types.Message):
     
     await message.answer(text)
 
+
 async def start_edit_cheatsheet_price(callback: CallbackQuery, state: FSMContext):
     try:
         _, cheatsheet_id = callback.data.split(":")
@@ -309,6 +319,7 @@ async def start_edit_cheatsheet_price(callback: CallbackQuery, state: FSMContext
     except Exception as e:
         logging.error(f"Error starting price edit: {e}")
         await callback.answer("Ошибка при изменении цены", show_alert=True)
+
 
 async def process_new_price(message: Message, state: FSMContext):
     try:
@@ -348,6 +359,7 @@ async def process_new_price(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
+
 def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
     """Форматирует информацию о шпаргалке для админа"""
     return (
@@ -359,6 +371,7 @@ def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
         f"💰 Цена: {cheatsheet['price']} руб.\n"  # Добавляем отображение цены
         f"👤 Автор: {cheatsheet['author']}"
     )
+
 
 async def start_broadcast(message: types.Message, state: FSMContext):
     """Начало создания рассылки"""
@@ -373,6 +386,7 @@ async def start_broadcast(message: types.Message, state: FSMContext):
     await state.update_data(users=users, users_count=len(users))
     await message.answer(texts.BROADCAST_START, reply_markup=cancel_kb())
     await state.set_state(BroadcastStates.waiting_for_content)
+
 
 async def process_broadcast_content(message: types.Message, state: FSMContext, bot: Bot):
     """Обработка контента для рассылки"""
@@ -405,6 +419,7 @@ async def process_broadcast_content(message: types.Message, state: FSMContext, b
         ])
     )
     await state.set_state(BroadcastStates.waiting_for_confirmation)
+
 
 async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Подтверждение и отправка рассылки"""
@@ -453,6 +468,7 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
         texts.BROADCAST_SUCCESS.format(success=success, total=len(users))
     )
     await state.clear()
+
 
 async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
     """Отмена рассылки"""
