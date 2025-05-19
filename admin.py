@@ -408,7 +408,7 @@ async def process_broadcast_content(message: types.Message, state: FSMContext, b
     await state.update_data(content=content)
     
     # Формируем текст для подтверждения
-    preview_text = content['text'] or "📷 Фото" if message.photo else "📄 Файл"
+    preview_text = content['text'] or ("📷 Фото" if message.photo else "📄 Файл")
     await message.answer(
         texts.BROADCAST_CONFIRM.format(
             content=preview_text,
@@ -432,42 +432,49 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
     
     success = 0
     failed = 0
+    failed_users = []
     
-    # Отправляем сообщения пачками
-    for i in range(0, len(users), config.BROADCAST_CHUNK_SIZE):
-        chunk = users[i:i + config.BROADCAST_CHUNK_SIZE]
-        
-        for user_id in chunk:
-            try:
-                if content['content_type'] == ContentType.TEXT:
-                    await bot.send_message(
-                        chat_id=user_id,
-                        text=content['text'],
-                        parse_mode="HTML"
-                    )
-                elif content['content_type'] == ContentType.PHOTO:
-                    await bot.send_photo(
-                        chat_id=user_id,
-                        photo=content['file_id'],
-                        caption=content.get('text'),
-                        parse_mode="HTML"
-                    )
-                elif content['content_type'] == ContentType.DOCUMENT:
-                    await bot.send_document(
-                        chat_id=user_id,
-                        document=content['file_id'],
-                        caption=content.get('text'),
-                        parse_mode="HTML"
-                    )
-                success += 1
-            except Exception as e:
-                logging.error(f"Ошибка отправки сообщения пользователю {user_id}: {e}")
-                failed += 1
-            await asyncio.sleep(0.1)
+    # Отправляем сообщения с интервалом
+    for user_id in users:
+        try:
+            if content['content_type'] == ContentType.TEXT:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=content['text'],
+                    parse_mode="HTML"
+                )
+            elif content['content_type'] == ContentType.PHOTO:
+                await bot.send_photo(
+                    chat_id=user_id,
+                    photo=content['file_id'],
+                    caption=content.get('text', ''),
+                    parse_mode="HTML"
+                )
+            elif content['content_type'] == ContentType.DOCUMENT:
+                await bot.send_document(
+                    chat_id=user_id,
+                    document=content['file_id'],
+                    caption=content.get('text', ''),
+                    parse_mode="HTML"
+                )
+            success += 1
+            await asyncio.sleep(0.5)  # Увеличиваем задержку между отправками
+        except Exception as e:
+            logging.error(f"Ошибка отправки пользователю {user_id}: {str(e)}")
+            failed += 1
+            failed_users.append(user_id)
     
-    await callback.message.edit_text(
-        texts.BROADCAST_SUCCESS.format(success=success, total=len(users))
+    # Сохраняем статистику
+    result_message = (
+        f"✅ Рассылка завершена\n\n"
+        f"Успешно: {success}\n"
+        f"Не удалось: {failed}\n"
     )
+    
+    if failed_users:
+        result_message += f"\nНе удалось отправить следующим пользователям:\n" + "\n".join(map(str, failed_users[:10]))  # Показываем первые 10 ошибок
+    
+    await callback.message.edit_text(result_message)
     await state.clear()
 
 
