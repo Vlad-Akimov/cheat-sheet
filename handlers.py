@@ -69,7 +69,7 @@ def register_handlers(dp):
     router.message.register(process_price, AddCheatsheetStates.waiting_for_price)
     
     # Отмена
-    router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter('*'))
+    router.callback_query.register(cancel_handler, F.data == "cancel")
     
     # Покупка
     router.callback_query.register(buy_cheatsheet, F.data.startswith("buy_"))

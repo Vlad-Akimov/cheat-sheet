@@ -564,8 +564,9 @@ async def process_price(message: types.Message, state: FSMContext):
 # Отмена -----------------------------------------------------
 
 async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
-    """Универсальный обработчик отмены с удалением сообщения"""
+    """Универсальный обработчик отмены - удаляет сообщение и очищает состояние"""
     try:
+        # Удаляем сообщение, к которому прикреплена кнопка отмены
         await callback.message.delete()
         await state.clear()
         await reply_with_menu(callback, "Действие отменено.", delete_current=False)
@@ -736,7 +737,7 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
 async def request_balance(message: types.Message, state: FSMContext):
     await message.answer(
         "Отправьте сумму пополнения цифрами (например: 500):",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=cancel_kb()
     )
     await state.set_state(BalanceRequestStates.waiting_for_amount)
 

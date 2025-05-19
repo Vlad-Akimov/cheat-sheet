@@ -1,10 +1,11 @@
 import asyncio
 import logging
 from aiogram import Bot, Router, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ContentType
+from base_commands import cancel_handler
 from config import config
 from db import db
 from text import texts
@@ -496,3 +497,5 @@ def register_admin_handlers(router: Router):
     )
     router.callback_query.register(confirm_broadcast, F.data == "broadcast_confirm", BroadcastStates.waiting_for_confirmation)
     router.callback_query.register(cancel_broadcast, F.data == "broadcast_cancel", BroadcastStates.waiting_for_confirmation)
+    
+    router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter(EditCheatsheetStates))
