@@ -104,6 +104,9 @@ async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
         await state.clear()
         return
     
+    # Сохраняем ID сообщений текущего поиска
+    current_search_message_ids = []
+    
     for cs in cheatsheets:
         status = "🛒 Куплена" if cs.get("is_purchased", False) else ("✅ Одобрена" if cs["is_approved"] else "⏳ На модерации")
         text = (
@@ -112,41 +115,76 @@ async def process_my_type(callback: types.CallbackQuery, state: FSMContext):
             f"📝 {'Формула' if cs['type'] == 'formulas' else 'Теория'}\n"
             f"💰 {cs['price']} руб. | {status}"
         )
-        await callback.message.answer(text, reply_markup=my_cheatsheet_kb(cs))
+        msg = await callback.message.answer(text, reply_markup=my_cheatsheet_kb(cs))
+        current_search_message_ids.append(msg.message_id)
     
+    await state.update_data(current_search_message_ids=current_search_message_ids)
     await callback.answer()
-    await state.clear()
 
 
 async def my_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
-    """Назад к выбору предмета в 'Мои шпаргалки'"""
-    await state.set_state(MyCheatsheetsStates.waiting_for_subject)
-    subjects = db.get_subjects()
-    
-    builder = InlineKeyboardBuilder()
-    for subject in subjects:
-        builder.button(text=subject, callback_data=f"my_subject_{subject}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(
-        text=texts.CANCEL_SEARCH,
-        callback_data="back_to_menu"
-    ))
-    
-    await callback.message.edit_text(
-        texts.FILTER_BY_SUBJECT,
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
+    """Назад к выбору предмета в 'Мои шпаргалки' с удалением результатов"""
+    try:
+        data = await state.get_data()
+        
+        # Удаляем сообщения текущего поиска
+        if 'current_search_message_ids' in data:
+            for msg_id in data['current_search_message_ids']:
+                try:
+                    await callback.bot.delete_message(
+                        chat_id=callback.message.chat.id,
+                        message_id=msg_id
+                    )
+                except Exception as e:
+                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+        
+        await state.set_state(MyCheatsheetsStates.waiting_for_subject)
+        subjects = db.get_subjects()
+        
+        builder = InlineKeyboardBuilder()
+        for subject in subjects:
+            builder.button(text=subject, callback_data=f"my_subject_{subject}")
+        builder.adjust(2)
+        builder.row(InlineKeyboardButton(
+            text=texts.CANCEL_SEARCH,
+            callback_data="back_to_menu"
+        ))
+        
+        await callback.message.edit_text(
+            texts.FILTER_BY_SUBJECT,
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"Error returning to subject: {e}")
+        await callback.answer("Ошибка при возврате", show_alert=True)
 
 
 async def my_back_to_semester(callback: types.CallbackQuery, state: FSMContext):
-    """Назад к выбору семестра в 'Мои шпаргалки'"""
-    await state.set_state(MyCheatsheetsStates.waiting_for_semester)
-    await callback.message.edit_text(
-        "Выберите семестр:",
-        reply_markup=semesters_kb_for_my_cheatsheets()
-    )
-    await callback.answer()
+    """Назад к выбору семестра в 'Мои шпаргалки' с удалением результатов"""
+    try:
+        data = await state.get_data()
+        
+        # Удаляем сообщения текущего поиска
+        if 'current_search_message_ids' in data:
+            for msg_id in data['current_search_message_ids']:
+                try:
+                    await callback.bot.delete_message(
+                        chat_id=callback.message.chat.id,
+                        message_id=msg_id
+                    )
+                except Exception as e:
+                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+        
+        await state.set_state(MyCheatsheetsStates.waiting_for_semester)
+        await callback.message.edit_text(
+            "Выберите семестр:",
+            reply_markup=semesters_kb_for_my_cheatsheets()
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"Error returning to semester: {e}")
+        await callback.answer("Ошибка при возврате", show_alert=True)
 
 
 async def open_my_cheatsheet(callback: types.CallbackQuery):
@@ -526,8 +564,14 @@ async def process_price(message: types.Message, state: FSMContext):
 # Отмена -----------------------------------------------------
 
 async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
-    await reply_with_menu(callback, "Действие отменено.")
-    await state.clear()
+    """Универсальный обработчик отмены с удалением сообщения"""
+    try:
+        await callback.message.delete()
+        await state.clear()
+        await reply_with_menu(callback, "Действие отменено.", delete_current=False)
+    except Exception as e:
+        logging.error(f"Ошибка в cancel_handler: {e}")
+        await callback.answer("Произошла ошибка при отмене")
 
 # Покупка ----------------------------------------------------
 
