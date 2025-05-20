@@ -5,10 +5,11 @@ from text import texts
 from kb import *
 from base_commands import *
 from admin_commands import *
-from states import SearchCheatsheetStates, AddCheatsheetStates, AddBalanceStates, BalanceRequestStates
+from states import *
 
 # Создаем роутер
 router = Router()
+
 
 def register_handlers(dp):
     # Команды
@@ -68,7 +69,7 @@ def register_handlers(dp):
     router.message.register(process_price, AddCheatsheetStates.waiting_for_price)
     
     # Отмена
-    router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter('*'))
+    router.callback_query.register(cancel_handler, F.data == "cancel")
     
     # Покупка
     router.callback_query.register(buy_cheatsheet, F.data.startswith("buy_"))

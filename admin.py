@@ -1,15 +1,17 @@
 import asyncio
 import logging
 from aiogram import Bot, Router, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ContentType
+from base_commands import cancel_handler
 from config import config
 from db import db
 from text import texts
 from kb import *
 from states import BroadcastStates, EditCheatsheetStates
+
 
 async def approve_cheatsheet(callback: CallbackQuery):
     try:
@@ -30,6 +32,7 @@ async def approve_cheatsheet(callback: CallbackQuery):
         logging.error(f"Error approving cheatsheet: {e}")
         await callback.answer("Ошибка при одобрении шпаргалки", show_alert=True)
 
+
 async def reject_cheatsheet(callback: CallbackQuery):
     try:
         _, cheatsheet_id = callback.data.split(":")
@@ -48,6 +51,7 @@ async def reject_cheatsheet(callback: CallbackQuery):
     except Exception as e:
         logging.error(f"Error rejecting cheatsheet: {e}")
         await callback.answer("Ошибка при отклонении шпаргалки", show_alert=True)
+
 
 async def view_all_cheatsheets(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
@@ -133,6 +137,7 @@ async def handle_balance_request(callback: types.CallbackQuery):
         await callback.answer("Произошла ошибка")
     
 
+
 async def check_cheatsheets(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -182,6 +187,7 @@ async def start_edit_cheatsheet_name(callback: CallbackQuery, state: FSMContext)
         logging.error(f"Error starting name edit: {e}")
         await callback.answer("Ошибка при изменении названия", show_alert=True)
 
+
 async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
     try:
         _, cheatsheet_id = callback.data.split(":")
@@ -199,6 +205,7 @@ async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Error returning to edit menu: {e}")
         await callback.answer("Ошибка при возврате", show_alert=True)
+
 
 async def process_new_name(message: Message, state: FSMContext):
     try:
@@ -234,6 +241,7 @@ async def process_new_name(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
+
 def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
     """Форматирует информацию о шпаргалке для админа"""
     return (
@@ -245,6 +253,7 @@ def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
         f"💰 Цена: {cheatsheet['price']} руб.\n"
         f"👤 Автор: {cheatsheet['author']}"
     )
+
 
 async def view_withdraw_requests(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
@@ -268,6 +277,7 @@ async def view_withdraw_requests(message: types.Message):
     
     await message.answer(text)
 
+
 async def view_feedback(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -289,6 +299,7 @@ async def view_feedback(message: types.Message):
     
     await message.answer(text)
 
+
 async def start_edit_cheatsheet_price(callback: CallbackQuery, state: FSMContext):
     try:
         _, cheatsheet_id = callback.data.split(":")
@@ -309,6 +320,7 @@ async def start_edit_cheatsheet_price(callback: CallbackQuery, state: FSMContext
     except Exception as e:
         logging.error(f"Error starting price edit: {e}")
         await callback.answer("Ошибка при изменении цены", show_alert=True)
+
 
 async def process_new_price(message: Message, state: FSMContext):
     try:
@@ -348,6 +360,7 @@ async def process_new_price(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
+
 def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
     """Форматирует информацию о шпаргалке для админа"""
     return (
@@ -359,6 +372,7 @@ def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
         f"💰 Цена: {cheatsheet['price']} руб.\n"  # Добавляем отображение цены
         f"👤 Автор: {cheatsheet['author']}"
     )
+
 
 async def start_broadcast(message: types.Message, state: FSMContext):
     """Начало создания рассылки"""
@@ -373,6 +387,7 @@ async def start_broadcast(message: types.Message, state: FSMContext):
     await state.update_data(users=users, users_count=len(users))
     await message.answer(texts.BROADCAST_START, reply_markup=cancel_kb())
     await state.set_state(BroadcastStates.waiting_for_content)
+
 
 async def process_broadcast_content(message: types.Message, state: FSMContext, bot: Bot):
     """Обработка контента для рассылки"""
@@ -393,7 +408,7 @@ async def process_broadcast_content(message: types.Message, state: FSMContext, b
     await state.update_data(content=content)
     
     # Формируем текст для подтверждения
-    preview_text = content['text'] or "📷 Фото" if message.photo else "📄 Файл"
+    preview_text = content['text'] or ("📷 Фото" if message.photo else "📄 Файл")
     await message.answer(
         texts.BROADCAST_CONFIRM.format(
             content=preview_text,
@@ -406,6 +421,7 @@ async def process_broadcast_content(message: types.Message, state: FSMContext, b
     )
     await state.set_state(BroadcastStates.waiting_for_confirmation)
 
+
 async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Подтверждение и отправка рассылки"""
     data = await state.get_data()
@@ -416,43 +432,51 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
     
     success = 0
     failed = 0
+    failed_users = []
     
-    # Отправляем сообщения пачками
-    for i in range(0, len(users), config.BROADCAST_CHUNK_SIZE):
-        chunk = users[i:i + config.BROADCAST_CHUNK_SIZE]
-        
-        for user_id in chunk:
-            try:
-                if content['content_type'] == ContentType.TEXT:
-                    await bot.send_message(
-                        chat_id=user_id,
-                        text=content['text'],
-                        parse_mode="HTML"
-                    )
-                elif content['content_type'] == ContentType.PHOTO:
-                    await bot.send_photo(
-                        chat_id=user_id,
-                        photo=content['file_id'],
-                        caption=content.get('text'),
-                        parse_mode="HTML"
-                    )
-                elif content['content_type'] == ContentType.DOCUMENT:
-                    await bot.send_document(
-                        chat_id=user_id,
-                        document=content['file_id'],
-                        caption=content.get('text'),
-                        parse_mode="HTML"
-                    )
-                success += 1
-            except Exception as e:
-                logging.error(f"Ошибка отправки сообщения пользователю {user_id}: {e}")
-                failed += 1
-            await asyncio.sleep(0.1)
+    # Отправляем сообщения с интервалом
+    for user_id in users:
+        try:
+            if content['content_type'] == ContentType.TEXT:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=content['text'],
+                    parse_mode="HTML"
+                )
+            elif content['content_type'] == ContentType.PHOTO:
+                await bot.send_photo(
+                    chat_id=user_id,
+                    photo=content['file_id'],
+                    caption=content.get('text', ''),
+                    parse_mode="HTML"
+                )
+            elif content['content_type'] == ContentType.DOCUMENT:
+                await bot.send_document(
+                    chat_id=user_id,
+                    document=content['file_id'],
+                    caption=content.get('text', ''),
+                    parse_mode="HTML"
+                )
+            success += 1
+            await asyncio.sleep(0.5)  # Увеличиваем задержку между отправками
+        except Exception as e:
+            logging.error(f"Ошибка отправки пользователю {user_id}: {str(e)}")
+            failed += 1
+            failed_users.append(user_id)
     
-    await callback.message.edit_text(
-        texts.BROADCAST_SUCCESS.format(success=success, total=len(users))
+    # Сохраняем статистику
+    result_message = (
+        f"✅ Рассылка завершена\n\n"
+        f"Успешно: {success}\n"
+        f"Не удалось: {failed}\n"
     )
+    
+    if failed_users:
+        result_message += f"\nНе удалось отправить следующим пользователям:\n" + "\n".join(map(str, failed_users[:10]))  # Показываем первые 10 ошибок
+    
+    await callback.message.edit_text(result_message)
     await state.clear()
+
 
 async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
     """Отмена рассылки"""
@@ -480,3 +504,5 @@ def register_admin_handlers(router: Router):
     )
     router.callback_query.register(confirm_broadcast, F.data == "broadcast_confirm", BroadcastStates.waiting_for_confirmation)
     router.callback_query.register(cancel_broadcast, F.data == "broadcast_cancel", BroadcastStates.waiting_for_confirmation)
+    
+    router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter(EditCheatsheetStates))

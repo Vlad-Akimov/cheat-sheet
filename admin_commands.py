@@ -10,8 +10,9 @@ from states import AddBalanceStates
 # Создаем роутер
 router = Router()
 
+
 async def notify_admin_about_request(bot: Bot, request_id: int, user: types.User, amount: float, 
-                                   file_id: str = None, file_type: str = None, proof_text: str = None):
+                                    file_id: str = None, file_type: str = None, proof_text: str = None):
     text = (
         f"🆕 Запрос на пополнение #{request_id}\n"
         f"👤 Пользователь: @{user.username} (ID: {user.id})\n"
@@ -50,6 +51,7 @@ async def notify_admin_about_request(bot: Bot, request_id: int, user: types.User
             )
     except Exception as e:
         print(f"Ошибка уведомления админа: {e}")
+
 
 # Админ: начало процесса пополнения баланса
 async def admin_add_balance(message: types.Message, state: FSMContext):
@@ -208,7 +210,7 @@ async def process_amount(message: types.Message, state: FSMContext):
             await message.bot.send_message(
                 chat_id=user_id,
                 text=f"💰 Ваш баланс пополнен на {amount} руб.\n"
-                     f"Текущий баланс: {new_balance} руб."
+                    f"Текущий баланс: {new_balance} руб."
             )
         except Exception as e:
             await message.answer(f"Не удалось уведомить пользователя: {e}")
