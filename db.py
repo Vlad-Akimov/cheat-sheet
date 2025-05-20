@@ -229,37 +229,24 @@ class Database:
     
     
     def get_cheatsheet(self, cheatsheet_id: int, user_id: int = None) -> Optional[Dict]:
-        """Получает полную информацию о шпаргалке с проверкой прав доступа"""
+        """Получает шпаргалку с проверкой существования"""
         self.cursor.execute("""
         SELECT c.id, s.name as subject, c.semester, c.type, c.name, 
             c.file_id, c.file_type, c.price, c.author_id,
-            COALESCE(u.username, 'Неизвестный автор') as author,
-            datetime(c.created_at, 'localtime') as created_at,
-            datetime(c.approved_at, 'localtime') as approved_at
+            COALESCE(u.username, 'Неизвестный') as author,
+            c.is_approved
         FROM cheatsheets c
         JOIN subjects s ON c.subject_id = s.id
         LEFT JOIN users u ON c.author_id = u.id
-        WHERE c.id = ? AND (c.is_approved = 1 OR c.author_id = ?)
-        """, (cheatsheet_id, user_id if user_id else 0))
+        WHERE c.id = ?
+        """, (cheatsheet_id,))
         
         result = self.cursor.fetchone()
         if not result:
             return None
-        
-        return {
-            "id": result[0],
-            "subject": result[1],
-            "semester": result[2],
-            "type": result[3],
-            "name": result[4],
-            "file_id": result[5],
-            "file_type": result[6],
-            "price": result[7],
-            "author_id": result[8],
-            "author": result[9],
-            "created_at": result[10],
-            "approved_at": result[11]
-        }
+            
+        columns = [col[0] for col in self.cursor.description]
+        return dict(zip(columns, result))
     
     
     def get_cheatsheets(self, subject: str = None, semester: int = None, type_: str = None, user_id: int = None) -> List[Dict]:
@@ -305,6 +292,27 @@ class Database:
             "created_at": row[10],
             "approved_at": row[11]
         } for row in results]
+    
+    
+    def get_cheatsheet_for_admin(self, cheatsheet_id: int) -> Optional[Dict]:
+        """Получает шпаргалку без проверки прав (только для админа)"""
+        self.cursor.execute("""
+        SELECT c.id, s.name as subject, c.semester, c.type, c.name, 
+            c.file_id, c.file_type, c.price, c.author_id,
+            COALESCE(u.username, 'Неизвестный') as author,
+            c.is_approved
+        FROM cheatsheets c
+        JOIN subjects s ON c.subject_id = s.id
+        LEFT JOIN users u ON c.author_id = u.id
+        WHERE c.id = ?
+        """, (cheatsheet_id,))
+        
+        result = self.cursor.fetchone()
+        if not result:
+            return None
+            
+        columns = [col[0] for col in self.cursor.description]
+        return dict(zip(columns, result))
     
     
     def get_user_cheatsheets(self, user_id: int, subject: str = None, semester: int = None, type_: str = None) -> List[Dict]:
@@ -392,9 +400,33 @@ class Database:
             return False
     
     
-    def reject_cheatsheet(self, cheatsheet_id: int):
-        self.cursor.execute("DELETE FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
-        self.conn.commit()
+    def reject_cheatsheet(self, cheatsheet_id: int) -> bool:
+        """Отклоняет шпаргалку с возвратом средств автору"""
+        try:
+            # Получаем данные о шпаргалке
+            self.cursor.execute("SELECT author_id, price FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
+            result = self.cursor.fetchone()
+            if not result:
+                return False
+                
+            author_id, price = result
+            
+            # Удаляем шпаргалку
+            self.cursor.execute("DELETE FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
+            
+            # Возвращаем средства автору (если цена > 0)
+            if price > 0:
+                self.cursor.execute(
+                    "UPDATE users SET balance = balance + ? WHERE id = ?",
+                    (price, author_id)
+                )
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при отклонении шпаргалки: {e}")
+            self.conn.rollback()
+            return False
     
     
     # Покупки

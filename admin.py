@@ -15,42 +15,158 @@ from states import BroadcastStates, EditCheatsheetStates
 
 async def approve_cheatsheet(callback: CallbackQuery):
     try:
-        _, cheatsheet_id = callback.data.split(":")
-        cheatsheet_id = int(cheatsheet_id)
+        # Извлекаем ID шпаргалки
+        cheatsheet_id = int(callback.data.split(":")[1])
         
-        db.approve_cheatsheet(cheatsheet_id)
+        # Одобряем шпаргалку в БД
+        success = db.approve_cheatsheet(cheatsheet_id)
+        if not success:
+            await callback.answer("Ошибка при одобрении шпаргалки")
+            return
         
-        db.cursor.execute("SELECT datetime(approved_at, 'localtime') FROM cheatsheets WHERE id = ?", (cheatsheet_id,))
-        approved_at = db.cursor.fetchone()[0]
+        # Удаляем сообщение с кнопками независимо от типа
+        try:
+            await callback.message.delete()
+        except Exception as delete_error:
+            logging.warning(f"Не удалось удалить сообщение: {delete_error}")
         
-        await callback.message.edit_text(
-            f"{texts.CHEATSHEET_APPROVED}\n\nДата публикации: {approved_at} (МСК)",
-            reply_markup=None
+        # Отправляем подтверждение вместо редактирования
+        await callback.message.answer(
+            f"✅ Шпаргалка #{cheatsheet_id} одобрена",
+            reply_markup=main_menu()
         )
+        
         await callback.answer()
+        
+        # Уведомляем автора
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        if cheatsheet and cheatsheet.get('author_id'):
+            try:
+                await callback.bot.send_message(
+                    chat_id=cheatsheet['author_id'],
+                    text=f"✅ Ваша шпаргалка \"{cheatsheet.get('name', '')}\" одобрена и теперь доступна в каталоге"
+                )
+            except Exception as notify_error:
+                logging.error(f"Ошибка уведомления автора: {notify_error}")
+                
     except Exception as e:
-        logging.error(f"Error approving cheatsheet: {e}")
-        await callback.answer("Ошибка при одобрении шпаргалки", show_alert=True)
+        logging.error(f"Ошибка при одобрении шпаргалки: {e}")
+        await callback.answer("Произошла ошибка при одобрении", show_alert=True)
 
 
 async def reject_cheatsheet(callback: CallbackQuery):
     try:
-        _, cheatsheet_id = callback.data.split(":")
-        cheatsheet_id = int(cheatsheet_id)
+        # Извлекаем ID шпаргалки
+        cheatsheet_id = int(callback.data.split(":")[1])
         
+        # Получаем данные перед удалением
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        
+        # Отклоняем (удаляем) шпаргалку в БД
+        success = db.reject_cheatsheet(cheatsheet_id)
+        if not success:
+            await callback.answer("Ошибка при отклонении шпаргалки")
+            return
+        
+        # Удаляем сообщение с кнопками независимо от типа
+        try:
+            await callback.message.delete()
+        except Exception as delete_error:
+            logging.warning(f"Не удалось удалить сообщение: {delete_error}")
+        
+        # Отправляем подтверждение вместо редактирования
+        await callback.message.answer(
+            f"❌ Шпаргалка #{cheatsheet_id} отклонена",
+            reply_markup=main_menu()
+        )
+        
+        await callback.answer()
+        
+        # Уведомляем автора
+        if cheatsheet and cheatsheet.get('author_id'):
+            try:
+                await callback.bot.send_message(
+                    chat_id=cheatsheet['author_id'],
+                    text=f"❌ Ваша шпаргалка \"{cheatsheet.get('name', '')}\" отклонена модератором"
+                )
+            except Exception as notify_error:
+                logging.error(f"Ошибка уведомления автора: {notify_error}")
+                
+    except Exception as e:
+        logging.error(f"Ошибка при отклонении шпаргалки: {e}")
+        await callback.answer("Произошла ошибка при отклонении", show_alert=True)
+
+
+async def handle_admin_approve(callback: CallbackQuery):
+    try:
+        cheatsheet_id = int(callback.data.split(":")[1])
+        
+        # Одобряем в базе
+        if not db.approve_cheatsheet(cheatsheet_id):
+            await callback.answer("Ошибка при одобрении")
+            return
+            
+        # Уведомляем пользователя
+        cheatsheet = db.get_cheatsheet_for_admin(cheatsheet_id)
+        if cheatsheet and cheatsheet.get('author_id'):
+            try:
+                await callback.bot.send_message(
+                    chat_id=cheatsheet['author_id'],
+                    text=f"✅ Ваша шпаргалка \"{cheatsheet['name']}\" одобрена!"
+                )
+            except Exception as e:
+                logging.error(f"Ошибка уведомления автора: {e}")
+
+        # Обновляем сообщение
+        try:
+            if hasattr(callback.message, 'caption'):
+                await callback.message.edit_caption(
+                    caption=f"✅ Шпаргалка одобрена (ID: {cheatsheet_id})",
+                    reply_markup=None
+                )
+            else:
+                await callback.message.edit_text(
+                    text=f"✅ Шпаргалка одобрена (ID: {cheatsheet_id})",
+                    reply_markup=None
+                )
+        except Exception as e:
+            logging.error(f"Ошибка редактирования сообщения: {e}")
+
+        await callback.answer("Шпаргалка одобрена")
+    except Exception as e:
+        logging.error(f"Ошибка в handle_admin_approve: {e}")
+        await callback.answer("Ошибка при одобрении", show_alert=True)
+
+async def handle_admin_reject(callback: CallbackQuery):
+    try:
+        cheatsheet_id = int(callback.data.split(":")[1])
+        
+        # Получаем данные перед удалением
+        cheatsheet = db.get_cheatsheet_for_admin(cheatsheet_id)
+        
+        # Отклоняем (удаляем)
         db.reject_cheatsheet(cheatsheet_id)
         
-        db.cursor.execute("SELECT datetime('now', 'localtime')")
-        rejected_at = db.cursor.fetchone()[0]
-        
-        await callback.message.edit_text(
-            f"{texts.CHEATSHEET_REJECTED}\n\nДата отклонения: {rejected_at} (МСК)",
-            reply_markup=None
-        )
-        await callback.answer()
+        # Уведомляем пользователя
+        if cheatsheet and cheatsheet.get('author_id'):
+            try:
+                await callback.bot.send_message(
+                    chat_id=cheatsheet['author_id'],
+                    text=f"❌ Ваша шпаргалка \"{cheatsheet['name']}\" отклонена модератором"
+                )
+            except Exception as e:
+                logging.error(f"Ошибка уведомления автора: {e}")
+
+        # Удаляем сообщение модерации
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logging.error(f"Ошибка удаления сообщения: {e}")
+
+        await callback.answer("Шпаргалка отклонена")
     except Exception as e:
-        logging.error(f"Error rejecting cheatsheet: {e}")
-        await callback.answer("Ошибка при отклонении шпаргалки", show_alert=True)
+        logging.error(f"Ошибка в handle_admin_reject: {e}")
+        await callback.answer("Ошибка при отклонении", show_alert=True)
 
 
 async def view_all_cheatsheets(message: types.Message):
@@ -171,16 +287,33 @@ async def start_edit_cheatsheet_name(callback: CallbackQuery, state: FSMContext)
         _, cheatsheet_id = callback.data.split(":")
         cheatsheet_id = int(cheatsheet_id)
         
+        # Получаем данные шпаргалки
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        if not cheatsheet:
+            await callback.answer("Шпаргалка не найдена", show_alert=True)
+            return
+
+        # Определяем тип контента
+        is_media = hasattr(callback.message, 'photo') or hasattr(callback.message, 'document')
+        
         await state.update_data(
             cheatsheet_id=cheatsheet_id,
             original_message_id=callback.message.message_id,
-            chat_id=callback.message.chat.id
+            chat_id=callback.message.chat.id,
+            is_media=is_media
         )
-        
-        await callback.message.edit_text(
+
+        # Удаляем старое сообщение и отправляем новое с запросом названия
+        try:
+            await callback.message.delete()
+        except:
+            pass
+            
+        await callback.message.answer(
             "Введите новое название шпаргалки (макс. 100 символов):",
             reply_markup=admin_back_kb(cheatsheet_id)
         )
+        
         await callback.answer()
         await state.set_state(EditCheatsheetStates.waiting_for_new_name)
     except Exception as e:
@@ -188,16 +321,39 @@ async def start_edit_cheatsheet_name(callback: CallbackQuery, state: FSMContext)
         await callback.answer("Ошибка при изменении названия", show_alert=True)
 
 
+def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
+    status = "✅ Одобрена" if cheatsheet.get('is_approved') else "⏳ На модерации"
+    return (
+        f"📝 Информация о шпаргалке:\n\n"
+        f"🏷 Название: {cheatsheet['name']}\n"
+        f"📚 Предмет: {cheatsheet['subject']}\n"
+        f"🔢 Семестр: {cheatsheet['semester']}\n"
+        f"📝 Тип: {cheatsheet['type']}\n"
+        f"💰 Цена: {cheatsheet['price']} руб.\n"
+        f"👤 Автор: {cheatsheet['author']}\n"
+        f"🆔 ID: {cheatsheet['id']}\n"
+        f"📌 Статус: {status}"
+    )
+
+
 async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
     try:
-        _, cheatsheet_id = callback.data.split(":")
-        cheatsheet_id = int(cheatsheet_id)
-        
         data = await state.get_data()
-        cheatsheet = db.get_cheatsheet(cheatsheet_id, callback.from_user.id)
+        cheatsheet_id = data.get("cheatsheet_id")
         
-        await callback.message.edit_text(
-            format_cheatsheet_for_admin(cheatsheet),
+        # Получаем данные с проверкой
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        if not cheatsheet:
+            await callback.answer("Шпаргалка не найдена", show_alert=True)
+            return
+            
+        response_text = format_cheatsheet_for_admin(cheatsheet)
+        
+        # Определяем метод редактирования
+        edit_method = callback.message.edit_caption if data.get('is_media') else callback.message.edit_text
+        
+        await edit_method(
+            text=response_text,
             reply_markup=admin_review_kb(cheatsheet_id)
         )
         await callback.answer()
@@ -224,13 +380,12 @@ async def process_new_name(message: Message, state: FSMContext):
         db.conn.commit()
         
         # Получаем обновленные данные
-        cheatsheet = db.get_cheatsheet(cheatsheet_id, message.from_user.id)
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        response_text = format_cheatsheet_for_admin(cheatsheet)
         
-        # Редактируем оригинальное сообщение
-        await message.bot.edit_message_text(
-            chat_id=data['chat_id'],
-            message_id=data['original_message_id'],
-            text=format_cheatsheet_for_admin(cheatsheet),
+        # Отправляем новое сообщение с обновленной информацией
+        await message.answer(
+            response_text,
             reply_markup=admin_review_kb(cheatsheet_id)
         )
         
@@ -305,16 +460,33 @@ async def start_edit_cheatsheet_price(callback: CallbackQuery, state: FSMContext
         _, cheatsheet_id = callback.data.split(":")
         cheatsheet_id = int(cheatsheet_id)
         
+        # Получаем данные шпаргалки
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        if not cheatsheet:
+            await callback.answer("Шпаргалка не найдена", show_alert=True)
+            return
+
+        # Определяем тип контента
+        is_media = hasattr(callback.message, 'photo') or hasattr(callback.message, 'document')
+        
         await state.update_data(
             cheatsheet_id=cheatsheet_id,
             original_message_id=callback.message.message_id,
-            chat_id=callback.message.chat.id
+            chat_id=callback.message.chat.id,
+            is_media=is_media
         )
-        
-        await callback.message.edit_text(
+
+        # Удаляем старое сообщение и отправляем новое с запросом цены
+        try:
+            await callback.message.delete()
+        except:
+            pass
+            
+        await callback.message.answer(
             "Введите новую цену шпаргалки (в рублях):",
             reply_markup=admin_back_kb(cheatsheet_id)
         )
+        
         await callback.answer()
         await state.set_state(EditCheatsheetStates.waiting_for_new_price)
     except Exception as e:
@@ -343,13 +515,12 @@ async def process_new_price(message: Message, state: FSMContext):
         db.conn.commit()
         
         # Получаем обновленные данные
-        cheatsheet = db.get_cheatsheet(cheatsheet_id, message.from_user.id)
+        cheatsheet = db.get_cheatsheet(cheatsheet_id)
+        response_text = format_cheatsheet_for_admin(cheatsheet)
         
-        # Редактируем оригинальное сообщение
-        await message.bot.edit_message_text(
-            chat_id=data['chat_id'],
-            message_id=data['original_message_id'],
-            text=format_cheatsheet_for_admin(cheatsheet),
+        # Отправляем новое сообщение с обновленной информацией
+        await message.answer(
+            response_text,
             reply_markup=admin_review_kb(cheatsheet_id)
         )
         
@@ -359,6 +530,7 @@ async def process_new_price(message: Message, state: FSMContext):
         await message.answer("Ошибка при изменении цены")
     finally:
         await state.clear()
+
 
 
 def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
@@ -485,17 +657,23 @@ async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
 
 
 def register_admin_handlers(router: Router):
-    router.callback_query.register(approve_cheatsheet, F.data.startswith("approve:"))
-    router.callback_query.register(reject_cheatsheet, F.data.startswith("reject:"))
+    # Обработчики модерации
+    router.callback_query.register(approve_cheatsheet, F.data.startswith("admin_approve:"))
+    router.callback_query.register(reject_cheatsheet, F.data.startswith("admin_reject:"))
+    
+    # Обработчики изменения названия
     router.callback_query.register(start_edit_cheatsheet_name, F.data.startswith("edit_name:"))
-    router.callback_query.register(start_edit_cheatsheet_price, F.data.startswith("edit_price:"))
-    router.callback_query.register(back_to_edit_menu, F.data.startswith("back_edit:"))
     router.message.register(process_new_name, EditCheatsheetStates.waiting_for_new_name)
+    
+    # Обработчики изменения цены
+    router.callback_query.register(start_edit_cheatsheet_price, F.data.startswith("edit_price:"))
     router.message.register(process_new_price, EditCheatsheetStates.waiting_for_new_price)
-    router.callback_query.register(back_to_edit_menu, F.data.startswith("back_to_edit_"))
+    
+    # Обработчик возврата к меню редактирования
+    router.callback_query.register(back_to_edit_menu, F.data.startswith("back_edit:"))
+    
     router.message.register(view_withdraw_requests, Command("withdraws"))
     router.message.register(view_feedback, Command("feedback"))
-    
     router.message.register(start_broadcast, Command("broadcast"))
     router.message.register(
         process_broadcast_content, 

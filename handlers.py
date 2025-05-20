@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 
+from admin import approve_cheatsheet, reject_cheatsheet
 from text import texts
 from kb import *
 from base_commands import *
@@ -77,6 +78,7 @@ def register_handlers(dp):
     router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter('*'))
     
     # Покупка
+    router.callback_query.register(open_cheatsheet, F.data.startswith("open_"))
     router.callback_query.register(buy_cheatsheet, F.data.startswith("buy_"))
     router.callback_query.register(buy_cheatsheet, F.data.startswith("free_"))
     
@@ -88,6 +90,9 @@ def register_handlers(dp):
     router.message.register(admin_add_balance, Command("addbalance"))
     router.message.register(process_user_id, AddBalanceStates.waiting_for_user_id)
     router.message.register(process_amount, AddBalanceStates.waiting_for_amount)
+    
+    router.callback_query.register(approve_cheatsheet, F.data.startswith("admin_approve:"))
+    router.callback_query.register(reject_cheatsheet, F.data.startswith("admin_reject:"))
     
     # Включаем роутер в диспетчер
     dp.include_router(router)

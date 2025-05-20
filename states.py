@@ -34,6 +34,12 @@ class MyCheatsheetsStates(StatesGroup):
     waiting_for_type = State()
 
 
+class ModerationStates(StatesGroup):
+    waiting_for_decision = State()
+    waiting_for_new_name = State()
+    waiting_for_new_price = State()
+
+
 class EditCheatsheetStates(StatesGroup):
     waiting_for_new_name = State()
     waiting_for_new_price = State()

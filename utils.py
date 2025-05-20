@@ -2,29 +2,35 @@ import os
 from config import config
 from kb import main_menu
 from typing import Union
-from aiogram import types
+from aiogram import types, Bot
+from aiogram.types import message
 import logging
 
 
-def save_file(file: Union[types.Document, types.PhotoSize], file_type: str) -> str:
+async def save_file(
+    bot: Bot,
+    file: Union[types.Document, types.PhotoSize], 
+    file_type: str,
+    message: types.Message = None
+) -> str:
     """Сохраняет файл на сервере и возвращает путь к нему"""
     try:
-        # Создаем папку, если ее нет
         os.makedirs(config.CHEATSHEETS_DIR, exist_ok=True)
         
-        # Генерируем уникальное имя файла
-        file_id = file.file_id
-        ext = ""
-        
         if file_type == "photo":
+            file_id = message.photo[-1].file_id
             ext = ".jpg"
         elif file_type == "document":
+            file_id = file.file_id
             ext = os.path.splitext(file.file_name)[1]
+        else:
+            return None
         
         file_path = os.path.join(config.CHEATSHEETS_DIR, f"{file_id}{ext}")
         
-        # Скачиваем файл
-        file.get_file().download(file_path)
+        # Получаем объект файла через бота и скачиваем
+        file_object = await bot.get_file(file_id)
+        await bot.download_file(file_object.file_path, destination=file_path)
         
         return file_path
     except Exception as e:

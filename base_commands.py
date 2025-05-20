@@ -1,5 +1,5 @@
 import logging
-from aiogram import Bot, Router, types
+from aiogram import F, Bot, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 
@@ -10,7 +10,7 @@ from text import texts
 from kb import *
 from db import db
 from admin_commands import notify_admin_about_request
-from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu
+from utils import is_valid_file_type, get_file_type, delete_previous_messages, reply_with_menu, save_file
 from states import *
 
 # Создаем роутер
@@ -387,11 +387,9 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
         )
         return
     
-    # Получаем текущий список ID
     current_search_message_ids = []
     
     for cheatsheet in cheatsheets:
-        # Форматируем дату публикации
         pub_date = cheatsheet.get("approved_at", cheatsheet.get("created_at", "неизвестно"))
         
         text = texts.CHEATSHEET_INFO.format(
@@ -405,23 +403,21 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
         )
         
         if cheatsheet["author_id"] == callback.from_user.id:
-            markup = free_kb(cheatsheet["file_id"])
+            markup = free_kb(cheatsheet["id"])
         else:
             db.cursor.execute("SELECT 1 FROM purchases WHERE user_id = ? AND cheatsheet_id = ?", 
                             (callback.from_user.id, cheatsheet["id"]))
             if db.cursor.fetchone():
-                markup = free_kb(cheatsheet["file_id"])
+                markup = free_kb(cheatsheet["id"])
             else:
                 if cheatsheet["price"] > 0:
                     markup = buy_kb(cheatsheet["id"], cheatsheet["price"])
                 else:
-                    markup = free_kb(cheatsheet["file_id"])
+                    markup = free_kb(cheatsheet["id"])
         
-        # Отправляем сообщение и сохраняем его ID
         msg = await callback.message.answer(text, reply_markup=markup)
         current_search_message_ids.append(msg.message_id)
     
-    # Сохраняем ID сообщений с результатами в состояние
     await state.update_data(current_search_message_ids=current_search_message_ids)
 
 # Добавление шпаргалок ----------------------------------------
@@ -434,6 +430,7 @@ async def process_add_subject(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=add_semesters_kb()
     )
     await state.set_state(AddCheatsheetStates.waiting_for_semester)
+
 
 async def process_add_semester(callback: types.CallbackQuery, state: FSMContext):
     semester = int(callback.data.split("_")[2])
@@ -456,11 +453,15 @@ async def process_add_type(callback: types.CallbackQuery, state: FSMContext):
 
 
 async def process_name(message: types.Message, state: FSMContext):
+    if not message.text or len(message.text.strip()) == 0:
+        await message.answer("Пожалуйста, введите название шпаргалки")
+        return
+    
     if len(message.text) > 100:
         await message.answer("Название слишком длинное (максимум 100 символов)")
         return
     
-    await state.update_data(name=message.text)
+    await state.update_data(name=message.text.strip())
     await message.answer(
         texts.SEND_FILE,
         reply_markup=cancel_kb()
@@ -474,14 +475,32 @@ async def process_file(message: types.Message, state: FSMContext):
         return
     
     file_type = get_file_type(message)
-    file_id = message.photo[-1].file_id if file_type == "photo" else message.document.file_id if file_type == "document" else message.text
+    file_id = None
     
-    await state.update_data(file_id=file_id, file_type=file_type)
-    await message.answer(
-        texts.SET_PRICE,
-        reply_markup=cancel_kb()
-    )
-    await state.set_state(AddCheatsheetStates.waiting_for_price)
+    try:
+        if file_type == "photo":
+            file_id = message.photo[-1].file_id
+            file_path = await save_file(message.bot, message.photo[-1], file_type, message=message)
+        elif file_type == "document":
+            file_id = message.document.file_id
+            file_path = await save_file(message.bot, message.document, file_type)
+        elif file_type == "text":
+            file_id = message.text
+            file_path = None
+        
+        if file_type != "text" and not file_path:
+            await message.answer("Ошибка при сохранении файла")
+            return
+            
+        await state.update_data(file_id=file_id, file_type=file_type)
+        
+        # Переходим к установке цены (оригинальный поток)
+        await message.answer(texts.SET_PRICE, reply_markup=cancel_kb())
+        await state.set_state(AddCheatsheetStates.waiting_for_price)
+        
+    except Exception as e:
+        logging.error(f"Error in process_file: {e}")
+        await message.answer("Произошла ошибка при обработке файла")
 
 
 async def process_price(message: types.Message, state: FSMContext):
@@ -541,20 +560,47 @@ async def process_price(message: types.Message, state: FSMContext):
                     chat_id=config.ADMIN_ID,
                     photo=data["file_id"],
                     caption=admin_text,
-                    reply_markup=admin_review_kb(cheatsheet_id)
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="✏️ Изменить название", callback_data=f"edit_name:{cheatsheet_id}"),
+                            InlineKeyboardButton(text="💰 Изменить цену", callback_data=f"edit_price:{cheatsheet_id}")
+                        ],
+                        [
+                            InlineKeyboardButton(text="✅ Одобрить", callback_data=f"admin_approve:{cheatsheet_id}"),
+                            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_reject:{cheatsheet_id}")
+                        ]
+                    ])
                 )
             elif data["file_type"] == "document":
                 await message.bot.send_document(
                     chat_id=config.ADMIN_ID,
                     document=data["file_id"],
                     caption=admin_text,
-                    reply_markup=admin_review_kb(cheatsheet_id)
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="✏️ Изменить название", callback_data=f"edit_name:{cheatsheet_id}"),
+                            InlineKeyboardButton(text="💰 Изменить цену", callback_data=f"edit_price:{cheatsheet_id}")
+                        ],
+                        [
+                            InlineKeyboardButton(text="✅ Одобрить", callback_data=f"admin_approve:{cheatsheet_id}"),
+                            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_reject:{cheatsheet_id}")
+                        ]
+                    ])
                 )
             else:
                 await message.bot.send_message(
                     chat_id=config.ADMIN_ID,
                     text=f"{admin_text}\n\nТекст шпаргалки:\n\n{data['file_id']}",
-                    reply_markup=admin_review_kb(cheatsheet_id)
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="✏️ Изменить название", callback_data=f"edit_name:{cheatsheet_id}"),
+                            InlineKeyboardButton(text="💰 Изменить цену", callback_data=f"edit_price:{cheatsheet_id}")
+                        ],
+                        [
+                            InlineKeyboardButton(text="✅ Одобрить", callback_data=f"admin_approve:{cheatsheet_id}"),
+                            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_reject:{cheatsheet_id}")
+                        ]
+                    ])
                 )
             
             await message.answer(texts.CHEATSHEET_SENT_FOR_REVIEW, reply_markup=main_menu())
@@ -567,7 +613,42 @@ async def process_price(message: types.Message, state: FSMContext):
         logging.error(f"Error in process_price: {e}")
     
     await state.clear()
-    
+
+
+async def open_cheatsheet(callback: types.CallbackQuery):
+    try:
+        cheatsheet_id = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+        
+        # Получаем шпаргалку с проверкой прав доступа
+        cheatsheet = db.get_cheatsheet(cheatsheet_id, user_id)
+        
+        if not cheatsheet:
+            await callback.answer("Шпаргалка не найдена или у вас нет доступа", show_alert=True)
+            return
+        
+        # Отправляем содержимое шпаргалки
+        if cheatsheet["file_type"] == "photo":
+            await callback.message.answer_photo(
+                cheatsheet["file_id"],
+                caption=f"📄 {cheatsheet['name']}"
+            )
+        elif cheatsheet["file_type"] == "document":
+            await callback.message.answer_document(
+                cheatsheet["file_id"],
+                caption=f"📄 {cheatsheet['name']}"
+            )
+        else:
+            await callback.message.answer(
+                f"📄 {cheatsheet['name']}\n\n{cheatsheet['file_id']}"
+            )
+        
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"Error opening cheatsheet: {e}")
+        await callback.answer("Произошла ошибка при открытии шпаргалки", show_alert=True)
+
 # Отмена -----------------------------------------------------
 
 async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -589,6 +670,7 @@ async def add_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Ошибка в add_back_to_subject: {e}")
         await callback.answer("Произошла ошибка")
+
 
 async def add_back_to_semester(callback: types.CallbackQuery, state: FSMContext):
     """Назад к выбору семестра при добавлении шпаргалки"""
@@ -711,18 +793,6 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
             # Списание средств у покупателя
             if not db.update_user_balance(user_id, -cheatsheet["price"]):
                 raise Exception("Не удалось списать средства")
-            """
-            # Начисление автору (если это не админ)
-            if cheatsheet["author_id"] != config.ADMIN_ID:
-                author_amount = round(cheatsheet["price"] * (1 - config.ADMIN_PERCENT), 2)
-                if not db.update_user_balance(cheatsheet["author_id"], author_amount):
-                    raise Exception("Не удалось начислить средства автору")
-            
-            # Начисление администратору
-            admin_amount = round(cheatsheet["price"] * config.ADMIN_PERCENT, 2)
-            if not db.update_user_balance(config.ADMIN_ID, admin_amount):
-                raise Exception("Не удалось начислить средства администратору")
-            """
 
             # Запись о покупке
             if not db.add_purchase(user_id, cheatsheet_id, cheatsheet["price"]):
@@ -1138,3 +1208,71 @@ async def handle_withdraw_request(callback: types.CallbackQuery):
     except Exception as e:
         print(f"Ошибка обработки запроса на вывод: {e}")
         await callback.answer("Произошла ошибка при обработке", show_alert=True)
+
+
+@router.message(ModerationStates.waiting_for_decision, F.text == "✅ Подтвердить")
+async def confirm_cheatsheet(message: types.Message, state: FSMContext):
+    await message.answer(texts.SET_PRICE, reply_markup=cancel_kb())
+    await state.set_state(AddCheatsheetStates.waiting_for_price)
+
+@router.message(ModerationStates.waiting_for_decision, F.text == "✏️ Изменить название")
+async def request_name_change(message: types.Message, state: FSMContext):
+    await message.answer(
+        "Введите новое название:",
+        reply_markup=cancel_kb()
+    )
+    await state.set_state(ModerationStates.waiting_for_new_name)
+
+@router.message(ModerationStates.waiting_for_new_name)
+async def process_new_name(message: types.Message, state: FSMContext):
+    if not message.text or len(message.text.strip()) == 0:
+        await message.answer("Пожалуйста, введите название")
+        return
+        
+    if len(message.text) > 100:
+        await message.answer("Название слишком длинное (макс. 100 символов)")
+        return
+        
+    await state.update_data(name=message.text.strip())
+    await show_preview(message, state)
+
+@router.message(ModerationStates.waiting_for_decision, F.text == "💰 Изменить цену")
+async def request_price_change(message: types.Message, state: FSMContext):
+    await message.answer(
+        "Введите новую цену:",
+        reply_markup=cancel_kb()
+    )
+    await state.set_state(ModerationStates.waiting_for_new_price)
+
+async def show_preview(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    file_type = data.get('file_type')
+    file_id = data.get('file_id')
+    
+    markup = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="✅ Подтвердить")],
+            [KeyboardButton(text="✏️ Изменить название")],
+            [KeyboardButton(text="💰 Изменить цену")],
+            [KeyboardButton(text="❌ Отменить")]
+        ],
+        resize_keyboard=True
+    )
+    
+    preview_text = (
+        f"Предпросмотр шпаргалки:\n\n"
+        f"📌 Название: {data.get('name', 'Не указано')}\n"
+        f"📚 Предмет: {data.get('subject', 'Не указан')}\n"
+        f"🎓 Семестр: {data.get('semester', 'Не указан')}\n"
+        f"📝 Тип: {'Формулы' if data.get('type') == 'formulas' else 'Теория'}\n"
+        f"📎 Тип файла: {'Фото' if file_type == 'photo' else 'Документ' if file_type == 'document' else 'Текст'}"
+    )
+    
+    if file_type == "photo":
+        await message.answer_photo(file_id, caption=preview_text, reply_markup=markup)
+    elif file_type == "document":
+        await message.answer_document(file_id, caption=preview_text, reply_markup=markup)
+    else:
+        await message.answer(f"{preview_text}\n\nСодержимое:\n{file_id}", reply_markup=markup)
+    
+    await state.set_state(ModerationStates.waiting_for_decision)

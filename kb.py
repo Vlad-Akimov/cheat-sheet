@@ -123,18 +123,16 @@ def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     )
     builder.button(
         text=texts.APPROVE_BUTTON, 
-        callback_data=f"approve:{cheatsheet_id}"
+        callback_data=f"admin_approve:{cheatsheet_id}"
     )
     builder.button(
         text=texts.REJECT_BUTTON, 
-        callback_data=f"reject:{cheatsheet_id}"
+        callback_data=f"admin_reject:{cheatsheet_id}"
     )
     builder.adjust(1, 1, 2)
     return builder.as_markup()
 
-
 def admin_back_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
-    print(cheatsheet_id)
     builder = InlineKeyboardBuilder()
     builder.button(
         text="⬅️ Назад к редактированию", 
@@ -192,24 +190,21 @@ def buy_kb(cheatsheet_id: int, price: float) -> InlineKeyboardMarkup:
 
 
 # Кнопка для бесплатной шпаргалки
-def free_kb(file_id: str) -> InlineKeyboardMarkup:
+def free_kb(cheatsheet_id: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
         text=texts.FREE_ACCESS,
-        callback_data=f"free_{file_id}"
+        callback_data=f"open_{cheatsheet_id}"
     )
     return builder.as_markup()
 
 
 def my_cheatsheet_kb(cheatsheet: dict) -> InlineKeyboardMarkup:
-    """Клавиатура для шпаргалки в разделе 'Мои шпаргалки'"""
     builder = InlineKeyboardBuilder()
-    
     builder.button(
         text="📄 Открыть", 
         callback_data=f"open_{cheatsheet['id']}"
     )
-    
     return builder.as_markup()
 
 
