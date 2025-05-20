@@ -92,6 +92,25 @@ def cancel_kb(callback_data: str = "cancel") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def add_semesters_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for i in range(1, 9):
+        builder.button(text=str(i), callback_data=f"add_semester_{i}")
+    builder.button(text=texts.BACK_BUTTON, callback_data="add_back_to_subject")
+    builder.button(text=texts.CANCEL_SEARCH, callback_data="cancel")
+    builder.adjust(4, 4, 2)
+    return builder.as_markup()
+
+def add_types_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Формулы", callback_data="add_type_formulas")
+    builder.button(text="Теория", callback_data="add_type_theory")
+    builder.button(text=texts.BACK_BUTTON, callback_data="add_back_to_semester")
+    builder.button(text=texts.CANCEL_SEARCH, callback_data="cancel")
+    builder.adjust(2, 2)
+    return builder.as_markup()
+
+
 def admin_review_kb(cheatsheet_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(

@@ -429,21 +429,29 @@ async def process_type(callback: types.CallbackQuery, state: FSMContext):
 async def process_add_subject(callback: types.CallbackQuery, state: FSMContext):
     subject = callback.data.split("_")[1]
     await state.update_data(subject=subject)
-    await callback.message.edit_text(texts.SELECT_SEMESTER, reply_markup=semesters_kb())
+    await callback.message.edit_text(
+        texts.SELECT_SEMESTER,
+        reply_markup=add_semesters_kb()
+    )
     await state.set_state(AddCheatsheetStates.waiting_for_semester)
 
-
 async def process_add_semester(callback: types.CallbackQuery, state: FSMContext):
-    semester = int(callback.data.split("_")[1])
+    semester = int(callback.data.split("_")[2])
     await state.update_data(semester=semester)
-    await callback.message.edit_text(texts.SELECT_TYPE, reply_markup=types_kb())
+    await callback.message.edit_text(
+        texts.SELECT_TYPE,
+        reply_markup=add_types_kb()
+    )
     await state.set_state(AddCheatsheetStates.waiting_for_type)
 
 
 async def process_add_type(callback: types.CallbackQuery, state: FSMContext):
-    type_ = callback.data.split("_")[1]
+    type_ = callback.data.split("_")[2]  # Теперь "add_type_formulas"
     await state.update_data(type=type_)
-    await callback.message.edit_text("Введите название шпаргалки:", reply_markup=cancel_kb())
+    await callback.message.edit_text(
+        "Введите название шпаргалки:",
+        reply_markup=cancel_kb()
+    )
     await state.set_state(AddCheatsheetStates.waiting_for_name)
 
 
@@ -453,7 +461,10 @@ async def process_name(message: types.Message, state: FSMContext):
         return
     
     await state.update_data(name=message.text)
-    await message.answer(texts.SEND_FILE, reply_markup=cancel_kb())
+    await message.answer(
+        texts.SEND_FILE,
+        reply_markup=cancel_kb()
+    )
     await state.set_state(AddCheatsheetStates.waiting_for_file)
 
 
@@ -463,17 +474,13 @@ async def process_file(message: types.Message, state: FSMContext):
         return
     
     file_type = get_file_type(message)
-    file_id = None
-    
-    if file_type == "photo":
-        file_id = message.photo[-1].file_id
-    elif file_type == "document":
-        file_id = message.document.file_id
-    elif file_type == "text":
-        file_id = message.text
+    file_id = message.photo[-1].file_id if file_type == "photo" else message.document.file_id if file_type == "document" else message.text
     
     await state.update_data(file_id=file_id, file_type=file_type)
-    await message.answer(texts.SET_PRICE, reply_markup=cancel_kb())
+    await message.answer(
+        texts.SET_PRICE,
+        reply_markup=cancel_kb()
+    )
     await state.set_state(AddCheatsheetStates.waiting_for_price)
 
 
@@ -564,15 +571,37 @@ async def process_price(message: types.Message, state: FSMContext):
 # Отмена -----------------------------------------------------
 
 async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
-    """Универсальный обработчик отмены - удаляет сообщение и очищает состояние"""
+    """Обработчик кнопки отмены - очищает состояние и возвращает в меню"""
+    await reply_with_menu(callback, "Действие отменено.")
+    await state.clear()
+
+
+async def add_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
+    """Назад к выбору предмета при добавлении шпаргалки"""
     try:
-        # Удаляем сообщение, к которому прикреплена кнопка отмены
-        await callback.message.delete()
-        await state.clear()
-        await reply_with_menu(callback, "Действие отменено.", delete_current=False)
+        await state.set_state(AddCheatsheetStates.waiting_for_subject)
+        subjects = db.get_subjects()
+        await callback.message.edit_text(
+            texts.SELECT_SUBJECT,
+            reply_markup=subjects_kb(subjects)
+        )
+        await callback.answer()
     except Exception as e:
-        logging.error(f"Ошибка в cancel_handler: {e}")
-        await callback.answer("Произошла ошибка при отмене")
+        logging.error(f"Ошибка в add_back_to_subject: {e}")
+        await callback.answer("Произошла ошибка")
+
+async def add_back_to_semester(callback: types.CallbackQuery, state: FSMContext):
+    """Назад к выбору семестра при добавлении шпаргалки"""
+    try:
+        await state.set_state(AddCheatsheetStates.waiting_for_semester)
+        await callback.message.edit_text(
+            texts.SELECT_SEMESTER,
+            reply_markup=add_semesters_kb()
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"Ошибка в add_back_to_semester: {e}")
+        await callback.answer("Произошла ошибка")
 
 # Покупка ----------------------------------------------------
 
