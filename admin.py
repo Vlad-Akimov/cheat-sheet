@@ -8,7 +8,7 @@ from aiogram.enums import ContentType
 from base_commands import cancel_handler
 from config import config
 from db import db
-from text import texts
+from text import format_cheatsheet_for_admin, texts
 from kb import *
 from states import BroadcastStates, EditCheatsheetStates
 
@@ -136,6 +136,7 @@ async def handle_admin_approve(callback: CallbackQuery):
     except Exception as e:
         logging.error(f"Ошибка в handle_admin_approve: {e}")
         await callback.answer("Ошибка при одобрении", show_alert=True)
+
 
 async def handle_admin_reject(callback: CallbackQuery):
     try:
@@ -321,21 +322,6 @@ async def start_edit_cheatsheet_name(callback: CallbackQuery, state: FSMContext)
         await callback.answer("Ошибка при изменении названия", show_alert=True)
 
 
-def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
-    status = "✅ Одобрена" if cheatsheet.get('is_approved') else "⏳ На модерации"
-    return (
-        f"📝 Информация о шпаргалке:\n\n"
-        f"🏷 Название: {cheatsheet['name']}\n"
-        f"📚 Предмет: {cheatsheet['subject']}\n"
-        f"🔢 Семестр: {cheatsheet['semester']}\n"
-        f"📝 Тип: {cheatsheet['type']}\n"
-        f"💰 Цена: {cheatsheet['price']} руб.\n"
-        f"👤 Автор: {cheatsheet['author']}\n"
-        f"🆔 ID: {cheatsheet['id']}\n"
-        f"📌 Статус: {status}"
-    )
-
-
 async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
     try:
         data = await state.get_data()
@@ -395,19 +381,6 @@ async def process_new_name(message: Message, state: FSMContext):
         await message.answer("Ошибка при изменении названия")
     finally:
         await state.clear()
-
-
-def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
-    """Форматирует информацию о шпаргалке для админа"""
-    return (
-        f"📝 Редактирование шпаргалки:\n\n"
-        f"🏷 Текущее название: {cheatsheet['name']}\n"
-        f"📚 Предмет: {cheatsheet['subject']}\n"
-        f"🔢 Семестр: {cheatsheet['semester']}\n"
-        f"📝 Тип: {cheatsheet['type']}\n"
-        f"💰 Цена: {cheatsheet['price']} руб.\n"
-        f"👤 Автор: {cheatsheet['author']}"
-    )
 
 
 async def view_withdraw_requests(message: types.Message):
@@ -530,20 +503,6 @@ async def process_new_price(message: Message, state: FSMContext):
         await message.answer("Ошибка при изменении цены")
     finally:
         await state.clear()
-
-
-
-def format_cheatsheet_for_admin(cheatsheet: dict) -> str:
-    """Форматирует информацию о шпаргалке для админа"""
-    return (
-        f"📝 Редактирование шпаргалки:\n\n"
-        f"🏷 Название: {cheatsheet['name']}\n"
-        f"📚 Предмет: {cheatsheet['subject']}\n"
-        f"🔢 Семестр: {cheatsheet['semester']}\n"
-        f"📝 Тип: {cheatsheet['type']}\n"
-        f"💰 Цена: {cheatsheet['price']} руб.\n"  # Добавляем отображение цены
-        f"👤 Автор: {cheatsheet['author']}"
-    )
 
 
 async def start_broadcast(message: types.Message, state: FSMContext):
