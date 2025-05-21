@@ -327,7 +327,7 @@ async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
         data = await state.get_data()
         cheatsheet_id = data.get("cheatsheet_id")
         
-        # Получаем данные с проверкой
+        # Получаем данные шпаргалки
         cheatsheet = db.get_cheatsheet(cheatsheet_id)
         if not cheatsheet:
             await callback.answer("Шпаргалка не найдена", show_alert=True)
@@ -335,13 +335,18 @@ async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
             
         response_text = format_cheatsheet_for_admin(cheatsheet)
         
-        # Определяем метод редактирования
-        edit_method = callback.message.edit_caption if data.get('is_media') else callback.message.edit_text
-        
-        await edit_method(
-            text=response_text,
+        # Удаляем предыдущее сообщение с запросом
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logging.warning(f"Не удалось удалить сообщение: {e}")
+
+        # Отправляем новое сообщение с меню редактирования
+        await callback.message.answer(
+            response_text,
             reply_markup=admin_review_kb(cheatsheet_id)
         )
+        
         await callback.answer()
         await state.clear()
     except Exception as e:

@@ -934,7 +934,8 @@ async def process_balance_amount(message: types.Message, state: FSMContext):
             
         # Отправляем новое сообщение с кнопкой отмены
         msg = await message.answer(
-            "Теперь отправьте подтверждение платежа:",
+            "Теперь отправьте скриншот подтверждения платежа (фото или документ PDF/JPG/PNG),\n"
+            "или текстовое описание платежа (номер транзакции и т.д.):",
             reply_markup=cancel_kb("balance_proof")
         )
         
