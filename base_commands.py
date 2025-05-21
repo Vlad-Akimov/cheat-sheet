@@ -203,16 +203,19 @@ async def open_my_cheatsheet(callback: types.CallbackQuery):
         if cheatsheet["file_type"] == "photo":
             await callback.message.answer_photo(
                 cheatsheet["file_id"],
-                caption=f"📄 {cheatsheet['name']}"
+                caption=f"📄 {cheatsheet['name']}",
+                reply_markup=main_menu()
             )
         elif cheatsheet["file_type"] == "document":
             await callback.message.answer_document(
                 cheatsheet["file_id"],
-                caption=f"📄 {cheatsheet['name']}"
+                caption=f"📄 {cheatsheet['name']}",
+                reply_markup=main_menu()
             )
         else:
             await callback.message.answer(
-                f"📄 {cheatsheet['name']}\n\n{cheatsheet['file_id']}"
+                f"📄 {cheatsheet['name']}\n\n{cheatsheet['file_id']}",
+                reply_markup=main_menu()
             )
         
         await callback.answer()
@@ -631,16 +634,19 @@ async def open_cheatsheet(callback: types.CallbackQuery):
         if cheatsheet["file_type"] == "photo":
             await callback.message.answer_photo(
                 cheatsheet["file_id"],
-                caption=f"📄 {cheatsheet['name']}"
+                caption=f"📄 {cheatsheet['name']}",
+                reply_markup=main_menu()
             )
         elif cheatsheet["file_type"] == "document":
             await callback.message.answer_document(
                 cheatsheet["file_id"],
-                caption=f"📄 {cheatsheet['name']}"
+                caption=f"📄 {cheatsheet['name']}",
+                reply_markup=main_menu()
             )
         else:
             await callback.message.answer(
-                f"📄 {cheatsheet['name']}\n\n{cheatsheet['file_id']}"
+                f"📄 {cheatsheet['name']}\n\n{cheatsheet['file_id']}",
+                reply_markup=main_menu()
             )
         
         await callback.answer()
