@@ -73,9 +73,11 @@ def register_handlers(dp):
     # Обработчики "Назад" для добавления шпаргалок
     router.callback_query.register(add_back_to_subject, F.data == "add_back_to_subject")
     router.callback_query.register(add_back_to_semester, F.data == "add_back_to_semester")
+    router.callback_query.register(handle_cancel_balance, F.data.startswith("cancel_balance"), StateFilter(BalanceRequestStates))
     
     # Отмена
     router.callback_query.register(cancel_handler, F.data == "cancel", StateFilter('*'))
+    router.callback_query.register(cancel_balance_request, F.data == "cancel", StateFilter(BalanceRequestStates))
     
     # Покупка
     router.callback_query.register(open_cheatsheet, F.data.startswith("open_"))

@@ -86,11 +86,11 @@ def types_kb() -> InlineKeyboardMarkup:
 
 
 # Кнопка отмены
-def cancel_kb(callback_data: str = "cancel") -> InlineKeyboardMarkup:
+def cancel_kb(state: str = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    callback_data = f"cancel_{state}" if state else "cancel"
     builder.button(text="❌ Отмена", callback_data=callback_data)
     return builder.as_markup()
-
 
 def add_semesters_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()

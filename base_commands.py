@@ -657,6 +657,68 @@ async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
 
 
+async def cancel_balance_request(callback: types.CallbackQuery, state: FSMContext):
+    """Обработчик отмены пополнения баланса"""
+    try:
+        # Получаем данные из состояния
+        data = await state.get_data()
+        
+        # Удаляем сообщение с кнопкой отмены
+        if 'cancel_message_id' in data:
+            try:
+                await callback.bot.delete_message(
+                    chat_id=callback.message.chat.id,
+                    message_id=data['cancel_message_id']
+                )
+            except Exception as e:
+                logging.error(f"Ошибка при удалении сообщения: {e}")
+        
+        # Удаляем само сообщение с кнопкой (callback.message)
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logging.error(f"Ошибка при удалении сообщения кнопки: {e}")
+        
+        # Отправляем подтверждение отмены
+        await callback.answer("Пополнение отменено")
+        await reply_with_menu(callback, "Пополнение баланса отменено", delete_current=False)
+        
+    except Exception as e:
+        logging.error(f"Ошибка в cancel_balance_request: {e}")
+        await callback.answer("Произошла ошибка", show_alert=True)
+    finally:
+        await state.clear()
+
+
+async def handle_cancel_balance(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        # Удаляем сообщение с кнопкой отмены
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logging.error(f"Ошибка удаления сообщения: {e}")
+
+        # Удаляем предыдущее сообщение (если есть в состоянии)
+        data = await state.get_data()
+        if 'cancel_message_id' in data:
+            try:
+                await callback.bot.delete_message(
+                    chat_id=callback.message.chat.id,
+                    message_id=data['cancel_message_id']
+                )
+            except Exception as e:
+                logging.error(f"Ошибка удаления предыдущего сообщения: {e}")
+
+        await callback.answer("Пополнение отменено")
+        await reply_with_menu(callback, "Пополнение баланса отменено", delete_current=False)
+        
+    except Exception as e:
+        logging.error(f"Ошибка в handle_cancel_balance: {e}")
+        await callback.answer("Произошла ошибка", show_alert=True)
+    finally:
+        await state.clear()
+
+
 async def add_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
     """Назад к выбору предмета при добавлении шпаргалки"""
     try:
@@ -834,28 +896,54 @@ async def buy_cheatsheet(callback: types.CallbackQuery):
 
 # Пользователь запрашивает пополнение
 async def request_balance(message: types.Message, state: FSMContext):
-    await message.answer(
+    # Удаляем команду /deposit
+    try:
+        await message.delete()
+    except:
+        pass
+    
+    # Отправляем сообщение с уникальной кнопкой отмены
+    msg = await message.answer(
         "Отправьте сумму пополнения цифрами (например: 500):",
-        reply_markup=cancel_kb()
+        reply_markup=cancel_kb("balance")
     )
+    
+    # Сохраняем ID сообщения для последующего удаления
+    await state.update_data(cancel_message_id=msg.message_id)
     await state.set_state(BalanceRequestStates.waiting_for_amount)
 
 
 # Пользователь вводит сумму
 async def process_balance_amount(message: types.Message, state: FSMContext):
     try:
+        # Удаляем предыдущее сообщение с кнопкой отмены
+        data = await state.get_data()
+        if 'cancel_message_id' in data:
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=data['cancel_message_id']
+                )
+            except:
+                pass
+
         amount = float(message.text)
         if amount <= 0:
             await message.answer("Сумма должна быть больше 0")
             return
             
-        await state.update_data(amount=amount)
-        await message.answer(
-            "Теперь отправьте скриншот подтверждения платежа (фото или документ PDF/JPG/PNG),\n"
-            "или текстовое описание платежа (номер транзакции и т.д.):",
-            reply_markup=cancel_kb()
+        # Отправляем новое сообщение с кнопкой отмены
+        msg = await message.answer(
+            "Теперь отправьте подтверждение платежа:",
+            reply_markup=cancel_kb("balance_proof")
+        )
+        
+        await state.update_data(
+            amount=amount,
+            cancel_message_id=msg.message_id
         )
         await state.set_state(BalanceRequestStates.waiting_for_proof)
+        
     except ValueError:
         await message.answer("Пожалуйста, введите сумму цифрами (например: 500)")
 
@@ -869,6 +957,12 @@ async def process_balance_proof(message: types.Message, state: FSMContext):
         await message.answer("Ошибка: неверная сумма", reply_markup=main_menu())
         await state.clear()
         return
+
+    # Удаляем предыдущее сообщение с кнопкой отмены
+    try:
+        await message.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id - 1)
+    except:
+        pass
 
     # Сохраняем файл или текст
     file_id = None
