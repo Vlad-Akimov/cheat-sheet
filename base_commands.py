@@ -136,7 +136,7 @@ async def my_back_to_subject(callback: types.CallbackQuery, state: FSMContext):
                         message_id=msg_id
                     )
                 except Exception as e:
-                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+                    pass
         
         await state.set_state(MyCheatsheetsStates.waiting_for_subject)
         subjects = db.get_subjects()
@@ -174,7 +174,7 @@ async def my_back_to_semester(callback: types.CallbackQuery, state: FSMContext):
                         message_id=msg_id
                     )
                 except Exception as e:
-                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+                    pass
         
         await state.set_state(MyCheatsheetsStates.waiting_for_semester)
         await callback.message.edit_text(
@@ -1060,7 +1060,7 @@ async def back_to_menu(callback: types.CallbackQuery, state: FSMContext):
                         message_id=msg_id
                     )
                 except Exception as e:
-                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+                    pass
         
         # Очищаем состояние
         await state.clear()
@@ -1088,7 +1088,7 @@ async def back_to_subject(callback: types.CallbackQuery, state: FSMContext):
                         message_id=msg_id
                     )
                 except Exception as e:
-                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+                    pass
         
         await state.set_state(SearchCheatsheetStates.waiting_for_subject)
         subjects = db.get_subjects()
@@ -1118,7 +1118,7 @@ async def back_to_semester(callback: types.CallbackQuery, state: FSMContext):
                         message_id=msg_id
                     )
                 except Exception as e:
-                    logging.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+                    pass
         
         await state.set_state(SearchCheatsheetStates.waiting_for_semester)
         await callback.message.edit_text(

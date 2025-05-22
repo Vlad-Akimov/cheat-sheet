@@ -28,7 +28,7 @@ async def approve_cheatsheet(callback: CallbackQuery):
         try:
             await callback.message.delete()
         except Exception as delete_error:
-            logging.warning(f"Не удалось удалить сообщение: {delete_error}")
+            pass
         
         # Отправляем подтверждение вместо редактирования
         await callback.message.answer(
@@ -72,7 +72,7 @@ async def reject_cheatsheet(callback: CallbackQuery):
         try:
             await callback.message.delete()
         except Exception as delete_error:
-            logging.warning(f"Не удалось удалить сообщение: {delete_error}")
+            pass
         
         # Отправляем подтверждение вместо редактирования
         await callback.message.answer(
@@ -339,7 +339,7 @@ async def back_to_edit_menu(callback: CallbackQuery, state: FSMContext):
         try:
             await callback.message.delete()
         except Exception as e:
-            logging.warning(f"Не удалось удалить сообщение: {e}")
+            pass
 
         # Отправляем новое сообщение с меню редактирования
         await callback.message.answer(
