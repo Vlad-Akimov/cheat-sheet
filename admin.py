@@ -526,7 +526,7 @@ async def start_broadcast(message: types.Message, state: FSMContext):
 
 
 async def process_broadcast_content(message: types.Message, state: FSMContext, bot: Bot):
-    """Обработка контента для рассылки"""
+    """Обработка контента для рассылки с поддержкой текста и фото"""
     data = await state.get_data()
     
     # Сохраняем контент в зависимости от типа
@@ -537,17 +537,21 @@ async def process_broadcast_content(message: types.Message, state: FSMContext, b
     
     if message.photo:
         content['file_id'] = message.photo[-1].file_id
+        content['has_photo'] = True
     elif message.document:
         content['file_id'] = message.document.file_id
         content['file_name'] = message.document.file_name
+        content['has_document'] = True
     
     await state.update_data(content=content)
     
     # Формируем текст для подтверждения
     preview_text = content['text'] or ("📷 Фото" if message.photo else "📄 Файл")
+    preview_content = f"{preview_text}\n\n📷 Прикреплено фото" if message.photo else preview_text
+    
     await message.answer(
         texts.BROADCAST_CONFIRM.format(
-            content=preview_text,
+            content=preview_content,
             users_count=data['users_count']
         ),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -559,7 +563,7 @@ async def process_broadcast_content(message: types.Message, state: FSMContext, b
 
 
 async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """Подтверждение и отправка рассылки"""
+    """Подтверждение и отправка рассылки с поддержкой текста и фото"""
     data = await state.get_data()
     users = data['users']
     content = data['content']
@@ -580,19 +584,33 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
                     parse_mode="HTML"
                 )
             elif content['content_type'] == ContentType.PHOTO:
-                await bot.send_photo(
-                    chat_id=user_id,
-                    photo=content['file_id'],
-                    caption=content.get('text', ''),
-                    parse_mode="HTML"
-                )
+                if 'text' in content and content['text']:
+                    # Отправляем фото с подписью
+                    await bot.send_photo(
+                        chat_id=user_id,
+                        photo=content['file_id'],
+                        caption=content['text'],
+                        parse_mode="HTML"
+                    )
+                else:
+                    # Отправляем только фото
+                    await bot.send_photo(
+                        chat_id=user_id,
+                        photo=content['file_id']
+                    )
             elif content['content_type'] == ContentType.DOCUMENT:
-                await bot.send_document(
-                    chat_id=user_id,
-                    document=content['file_id'],
-                    caption=content.get('text', ''),
-                    parse_mode="HTML"
-                )
+                if 'text' in content and content['text']:
+                    await bot.send_document(
+                        chat_id=user_id,
+                        document=content['file_id'],
+                        caption=content['text'],
+                        parse_mode="HTML"
+                    )
+                else:
+                    await bot.send_document(
+                        chat_id=user_id,
+                        document=content['file_id']
+                    )
             success += 1
             await asyncio.sleep(0.5)  # Увеличиваем задержку между отправками
         except Exception as e:
@@ -608,7 +626,7 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
     )
     
     if failed_users:
-        result_message += f"\nНе удалось отправить следующим пользователям:\n" + "\n".join(map(str, failed_users[:10]))  # Показываем первые 10 ошибок
+        result_message += f"\nНе удалось отправить следующим пользователям:\n" + "\n".join(map(str, failed_users[:10]))
     
     await callback.message.edit_text(result_message)
     await state.clear()

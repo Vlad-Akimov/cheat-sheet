@@ -21,6 +21,12 @@ router = Router()
 async def cmd_start(message: types.Message):
     try:
         await delete_previous_messages(message, 1000)
+        
+        db.add_user(
+            user_id=message.from_user.id,
+            username=message.from_user.username
+        )
+        
         await reply_with_menu(message, texts.START, delete_prev=False)
     except Exception as e:
         logging.error(f"Ошибка в cmd_start: {e}")
